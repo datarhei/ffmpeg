@@ -1,8 +1,4 @@
-FROM alpine:latest
-
-CMD ["--help"]
-ENTRYPOINT  ["ffmpeg"]
-WORKDIR /tmp/workdir
+FROM alpine:latest as builder
 
 ENV FDKAAC_VERSION=0.1.5 \
     LAME_VERSION=3.99.5 \
@@ -42,7 +38,6 @@ RUN buildDeps="autoconf \
     ./configure --prefix="${SRC}" --bindir="${SRC}/bin" --enable-pic --enable-shared --disable-cli && \
     make && \
     make install && \
-    rm -rf ${DIR} && \
 
     DIR=$(mktemp -d) && cd ${DIR} && \
     curl -sL https://downloads.sf.net/project/lame/lame/${LAME_VERSION%.*}/lame-${LAME_VERSION}.tar.gz | \
@@ -50,7 +45,6 @@ RUN buildDeps="autoconf \
     ./configure --prefix="${SRC}" --bindir="${SRC}/bin" --disable-static --enable-nasm --datarootdir="${DIR}" && \
     make && \
     make install && \
-    rm -rf ${DIR} && \
 
     DIR=$(mktemp -d) && cd ${DIR} && \
     curl -sL https://github.com/mstorsjo/fdk-aac/archive/v${FDKAAC_VERSION}.tar.gz | \
@@ -59,8 +53,6 @@ RUN buildDeps="autoconf \
     ./configure --prefix="${SRC}" --disable-static --datadir="${DIR}" && \
     make && \
     make install && \
-    make distclean && \
-    rm -rf ${DIR} && \
                 
     DIR=$(mktemp -d) && cd ${DIR} && \
     curl -sLO http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
@@ -89,14 +81,17 @@ RUN buildDeps="autoconf \
         --disable-ffserver && \
     make && \
     make install && \
-    make distclean && \
-    hash -r && \
-    cd tools && \
-    make qt-faststart && \
-    cp qt-faststart ${SRC}/bin && \
-    rm -rf ${DIR} && \
+    hash -r
+    
+FROM alpine:latest
 
-    cd && \
-    apk del ${buildDeps} && \
-	rm -rf /var/cache/apk/* /usr/local/include && \
+COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+COPY --from=builder /usr/local/lib /usr/local/lib
+
+RUN apk add --update libssl1.0 && \
     ffmpeg -buildconf
+    
+CMD ["--help"]
+ENTRYPOINT  ["ffmpeg"]
+WORKDIR /tmp/ffmpeg
