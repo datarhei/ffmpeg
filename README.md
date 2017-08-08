@@ -26,18 +26,13 @@ FFmpeg Development Image for H.264-Processing (e.g. RTMP, HLS)
 
 ## Published Images
 
-* **3.3.3**  
-  docker pull `datarhei/ffmpeg:3.3.3`  
-  docker pull `datarhei/ffmpeg:3.3.3-armhf`
-* **3.2.7**   
-  docker pull `datarhei/ffmpeg:3.2.7`   
-  docker pull `datarhei/ffmpeg:3.2.7-armhf`
-* **3.1.7**  
-  docker pull `datarhei/ffmpeg:3.1.9`   
-  docker pull `datarhei/ffmpeg:3.1.9-armhf`
-* **3.0.7**  
-  docker pull `datarhei/ffmpeg:3.0.9`   
-  docker pull `datarhei/ffmpeg:3.0.9-armhf`
-* **2.8.7**  
-  docker pull `datarhei/ffmpeg:2.8.12`   
-  docker pull `datarhei/ffmpeg:2.8.12-armhf`
+* `3.3.3`, `3.3`, `3` (docker pull `datarhei/ffmpeg:3.3`)
+* `3.3.3-armhf`, `3.3-armhf`, `3-armhf` (docker pull `datarhei/ffmpeg:3.3-armhf`)
+* `3.2.7`, `3.2` (docker pull `datarhei/ffmpeg:3.2`)
+* `3.2.7-armhf`, `3.2-armhf` (docker pull `datarhei/ffmpeg:3.2-armhf`)
+* `3.1.10`, `3.1` (docker pull `datarhei/ffmpeg:3.1`)
+* `3.1.10-armhf`, `3.1-armhf` (docker pull `datarhei/ffmpeg:3.1-armhf`)
+* `3.0.9`, `3.0` (docker pull `datarhei/ffmpeg:3.0`)
+* `3.0.9-armhf`, `3.0-armhf` (docker pull `datarhei/ffmpeg:3.0-armhf`)
+* `2.8.12`, `2.8`, `2` (docker pull `datarhei/ffmpeg:2.8`)
+* `2.8.12-armhf`, `2.8-armhf`, `2-armhf` (docker pull `datarhei/ffmpeg:2.8-armhf`) 
