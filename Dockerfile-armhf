@@ -1,13 +1,12 @@
-FROM hypriot/rpi-alpine:latest as builder
+FROM resin/armhf-alpine:latest as builder
 
-ENV FDKAAC_VERSION=0.1.5 \
-    LAME_VERSION=3.99.5 \
-    X264_VERSION=20170226-2245-stable \
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
     SRC=/usr/local
 
-ARG FFMPEG_VERSION="2.8.11"
-ARG FFMPEG_KEY="D67658D8"
+ARG FDKAAC_VERSION=0.1.5
+ARG LAME_VERSION=3.99.5
+ARG X264_VERSION=20170807-2245-stable
+ARG FFMPEG_VERSION="2.8.12"
 
 RUN buildDeps="autoconf \
         automake \
@@ -83,7 +82,7 @@ RUN buildDeps="autoconf \
     make install && \
     hash -r
     
-FROM hypriot/rpi-alpine:latest
+FROM resin/armhf-alpine:latest
 
 COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
@@ -91,7 +90,7 @@ COPY --from=builder /usr/local/lib /usr/local/lib
 
 RUN apk add --update libssl1.0 && \
     ffmpeg -buildconf
-    
+
 CMD ["--help"]
 ENTRYPOINT  ["ffmpeg"]
 WORKDIR /tmp/ffmpeg
