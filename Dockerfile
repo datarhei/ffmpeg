@@ -41,7 +41,8 @@ RUN buildDeps="autoconf \
     make install && \
 
     DIR=$(mktemp -d) && cd ${DIR} && \
-    curl -sL https://downloads.sf.net/project/lame/lame/${LAME_VERSION%.*}/lame-${LAME_VERSION}.tar.gz | \
+    LAME_GIT_VERSION=$(echo ${LAME_VERSION} | tr '.' '_') && \
+    curl -sL https://github.com/rbrito/lame/archive/RELEASE__${LAME_GIT_VERSION}.tar.gz | \
     tar -zx --strip-components=1 && \
     ./configure --prefix="${SRC}" --bindir="${SRC}/bin" --disable-static --enable-nasm --datarootdir="${DIR}" && \
     make && \
