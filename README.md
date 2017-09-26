@@ -39,3 +39,16 @@ FFmpeg Development Image for H.264-Processing (e.g. RTMP, HLS)
 * `2.8.13`, `2.8`, `2` (docker pull `datarhei/ffmpeg:2.8`)
 * `2.8.13-armhf`, `2.8-armhf`, `2-armhf` (docker pull `datarhei/ffmpeg:2.8-armhf`) 
 * `2.8.13-aarch64`, `2.8-aarch64`, `2-aarch64` (docker pull `datarhei/ffmpeg:2.8-aarch64`) 
+
+## Build your own Image
+
+```sh
+docker build -t ffmpeg \
+              --build-arg ALPINE_IMAGE=alpine:latest . 
+             
+docker build -t ffmpeg:armhf \
+              --build-arg ALPINE_IMAGE=resin/armhf-alpine:latest . 
+             
+docker build -t ffmpeg:aarch64 \
+              --build-arg ALPINE_IMAGE=resin/aarch64-alpine:latest .
+```

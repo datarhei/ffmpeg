@@ -1,4 +1,6 @@
-FROM alpine:latest as builder
+ARG ALPINE_IMAGE=alpine:latest
+
+FROM $ALPINE_IMAGE as builder
 
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
     SRC=/usr/local
@@ -82,7 +84,7 @@ RUN buildDeps="autoconf \
     make install && \
     hash -r
     
-FROM alpine:latest
+FROM $ALPINE_IMAGE
 
 COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
