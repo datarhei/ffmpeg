@@ -7,8 +7,8 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
 
 ARG FDKAAC_VERSION=0.1.5
 ARG LAME_VERSION=3.99.5
-ARG X264_VERSION=20170807-2245-stable
-ARG FFMPEG_VERSION="2.8.12"
+ARG X264_VERSION=20171204-2245-stable
+ARG FFMPEG_VERSION=2.8.13
 
 RUN buildDeps="autoconf \
         automake \
@@ -31,32 +31,34 @@ RUN buildDeps="autoconf \
     export MAKEFLAGS="-j$(($(grep -c ^processor /proc/cpuinfo) + 1))" && \
     apk update && \
     apk upgrade && \
-    apk add --update ${buildDeps} libgcc libstdc++ ca-certificates libssl1.0 && \
+    apk add --update ${buildDeps} libgcc libstdc++ ca-certificates libssl1.0
     
-    DIR=$(mktemp -d) && cd ${DIR} && \
-    curl -sL https://ftp.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-${X264_VERSION}.tar.bz2 | \
+RUN DIR=$(mktemp -d) && cd ${DIR} && \
+    echo "http://ftp.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-${X264_VERSION}.tar.bz2" && \
+    curl -sL http://ftp.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-${X264_VERSION}.tar.bz2 | \
     tar -jx --strip-components=1 && \
-    ./configure --prefix="${SRC}" --bindir="${SRC}/bin" --enable-pic --enable-shared --disable-cli && \
+    ./configure --prefix="${SRC}" --bindir="${SRC}/bin" --enable-shared && \
     make && \
-    make install && \
+    make install
 
-    DIR=$(mktemp -d) && cd ${DIR} && \
+RUN DIR=$(mktemp -d) && cd ${DIR} && \
     LAME_GIT_VERSION=$(echo ${LAME_VERSION} | tr '.' '_') && \
     curl -sL https://github.com/rbrito/lame/archive/RELEASE__${LAME_GIT_VERSION}.tar.gz | \
     tar -zx --strip-components=1 && \
+    cp /usr/share/automake-*/config.guess config.guess && \
     ./configure --prefix="${SRC}" --bindir="${SRC}/bin" --disable-static --enable-nasm --datarootdir="${DIR}" && \
     make && \
-    make install && \
+    make install
 
-    DIR=$(mktemp -d) && cd ${DIR} && \
+RUN DIR=$(mktemp -d) && cd ${DIR} && \
     curl -sL https://github.com/mstorsjo/fdk-aac/archive/v${FDKAAC_VERSION}.tar.gz | \
     tar -zx --strip-components=1 && \
     autoreconf -fiv && \
     ./configure --prefix="${SRC}" --disable-static --datadir="${DIR}" && \
     make && \
-    make install && \
-                
-    DIR=$(mktemp -d) && cd ${DIR} && \
+    make install
+
+RUN DIR=$(mktemp -d) && cd ${DIR} && \
     curl -sLO http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
     tar -zx --strip-components=1 -f ffmpeg-${FFMPEG_VERSION}.tar.gz && \
     ./configure \
@@ -91,7 +93,7 @@ COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 COPY --from=builder /usr/local/lib /usr/local/lib
 
-RUN apk add --update libssl1.0 && \
+RUN apk add --update --no-cache libssl1.0 && \
     ffmpeg -buildconf
 
 CMD ["--help"]
