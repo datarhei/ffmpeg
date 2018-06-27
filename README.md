@@ -24,9 +24,9 @@ FFmpeg Development Image for H.264-Processing (e.g. RTMP, HLS)
     --disable-ffserver (removed in v4)
 ```
 
-* `4.0`, `4` (docker pull `datarhei/ffmpeg:4.0`)
-* `4.0-armhf`, `4-armhf` (docker pull `datarhei/ffmpeg:4.0-armhf`)
-* `4.0-aarch64`, `4-aarch64` (docker pull `datarhei/ffmpeg:4.0-aarch64`)
+* `4.0.1`, `4.0`, `4` (docker pull `datarhei/ffmpeg:4.0`)
+* `4.0.1-armhf`, `4.0-armhf`, `4-armhf` (docker pull `datarhei/ffmpeg:4.0-armhf`)
+* `4.0.1-aarch64`, `4.0-aarch64`, `4-aarch64` (docker pull `datarhei/ffmpeg:4.0-aarch64`)
 * `3.4.2`, `3.4`, `3` (docker pull `datarhei/ffmpeg:3.4`)  
 * `3.3.7`, `3.3` (docker pull `datarhei/ffmpeg:3.3`)
 * `3.3.7-armhf`, `3.3-armhf`, `3-armhf` (docker pull `datarhei/ffmpeg:3.3-armhf`)
