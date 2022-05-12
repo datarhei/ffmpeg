@@ -20,9 +20,11 @@ FFmpeg base image for [datarhei/core](https://github.com/datarhei/core).
 ## Images and Plattforms:
 Dockerimage | OS | Plattform | GPU
 -----------|----|-----------|----
-docker.io/datarhei/ffmpeg:latest | Alpine 3.15 | linux/amd64, linux/arm64, linux/arm/v7 | -
-docker.io/datarhei/ffmpeg:rpi-latest | Alpine 3.15 | Raspberry Pi (linux/arm/v7) | MMAL/OMX
-docker.io/datarhei/ffmpeg:vaapi-latest | Alpine 3.15 | linux/amd64 | Intel VAAPI
+docker.io/datarhei/base:alpine-ffmpeg-latest | Alpine 3.15 | linux/amd64, linux/arm64, linux/arm/v7 | -
+docker.io/datarhei/base:alpine-ffmpeg-rpi-latest | Alpine 3.15 | Raspberry Pi (linux/arm/v7) | MMAL/OMX
+docker.io/datarhei/base:alpine-ffmpeg-vaapi-latest | Alpine 3.15 | linux/amd64 | Intel VAAPI
+
+More tags: https://hub.docker.com/repository/docker/datarhei/base/general
 
 ## Testing
 ```sh
