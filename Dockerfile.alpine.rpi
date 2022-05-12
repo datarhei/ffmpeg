@@ -1,0 +1,145 @@
+ARG ALPINE_IMAGE=alpine:3.15
+
+FROM $ALPINE_IMAGE as builder
+
+ARG RPI_VERSION=0.20200813-r0
+
+ARG FREETYPE_VERSION=2.11.1-r1
+ARG XML2_VERSION=2.9.13-r0
+ARG SRT_VERSION=1.4.2-r1
+ARG X264_VERSION=20210613-r0
+ARG X265_VERSION=3.5-r0
+ARG VPX_VERSION=1.10.0-r0
+ARG LAME_VERSION=3.100-r0
+ARG OPUS_VERSION=1.3.1-r1
+ARG VORBIS_VERSION=1.3.7-r0
+ARG ALSA_VERSION=1.2.5.1-r1
+ARG FFMPEG_VERSION=4.4.2
+
+ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig \
+  SRC=/usr
+
+# install build packages
+RUN apk add -U \
+  autoconf \
+  automake \
+  bash \
+  binutils \
+  bzip2 \
+  ca-certificates \
+  cmake \
+  coreutils \
+  curl \
+  diffutils \
+  g++ \
+  gcc \
+  libgcc \
+  libssl1.1 \
+  libtool \
+  linux-headers \
+  make \
+  musl-dev \
+  nasm \
+  openssl-dev \
+  patch \
+  tar \
+  zlib-dev
+
+# install shared ffmpeg libs
+RUN apk add \
+  raspberrypi-dev=${RPI_VERSION} \
+  raspberrypi-libs=${RPI_VERSION} \
+  libxml2-dev=${XML2_VERSION} \
+  freetype-dev=${FREETYPE_VERSION} \
+  libsrt-dev=${SRT_VERSION} \
+  x264-dev=${X264_VERSION} \
+  x265-dev=${X265_VERSION} \
+  libvpx-dev=${VPX_VERSION} \
+  lame-dev=${LAME_VERSION} \
+  opus-dev=${OPUS_VERSION} \
+  libvorbis-dev=${VORBIS_VERSION} \
+  alsa-lib-dev=${ALSA_VERSION}
+
+# install and patch ffmpeg
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
+  tar -xvz -f ffmpeg-${FFMPEG_VERSION}.tar.gz && \
+  rm ffmpeg-${FFMPEG_VERSION}.tar.gz
+
+COPY ./contrib /contrib
+
+RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
+  patch -p1 < /contrib/ffmpeg-jsonstats.patch && \
+  ./configure \
+  --extra-version=datarhei \
+  --prefix="${SRC}" \
+  --extra-libs="-lpthread -lxml2 -lm -lz -lsupc++ -lstdc++ -lssl -lcrypto -lz -lc -ldl" \
+  --enable-nonfree \
+  --enable-gpl \
+  --enable-version3 \
+  --enable-postproc \
+  --enable-static \
+  --enable-openssl \
+  --enable-libxml2 \
+  --enable-omx \
+  --enable-omx-rpi \
+  --enable-mmal \
+  --enable-v4l2_m2m \
+  --enable-alsa \
+  --enable-libfreetype \
+  --enable-libsrt \
+  --enable-libx264 \
+  --enable-libx265 \
+  --enable-libvpx \
+  --enable-libmp3lame \
+  --enable-libopus \
+  --enable-libvorbis \
+  --disable-ffplay \
+  --disable-debug \
+  --disable-doc \
+  --disable-shared && \
+  make -j$(nproc) && \
+  make install
+
+# export shared ffmpeg libs
+
+RUN mkdir -p /ffmpeg/lib && \
+  cp \
+  /usr/lib/libfreetype.so.6 \
+  /usr/lib/libbrotlidec.so.1 \
+  /usr/lib/libbrotlicommon.so.1 \
+  /usr/lib/libbz2.so.1 \
+  /usr/lib/libpng16.so.16 \
+  /usr/lib/libxml2.so.2 \
+  /usr/lib/liblzma.so.5 \
+  /usr/lib/libsrt.so.1 \
+  /usr/lib/libx264.so.163 \
+  /usr/lib/libx265.so.199 \
+  /usr/lib/libvpx.so.6 \
+  /usr/lib/libmp3lame.so.0 \
+  /usr/lib/libopus.so.0 \
+  /usr/lib/libvorbis.so.0 \
+  /usr/lib/libogg.so.0 \
+  /usr/lib/libvorbisenc.so.2 \
+  /usr/lib/libgcc_s.so.1 \
+  /usr/lib/libstdc++.so.6 \
+  /ffmpeg/lib
+
+FROM $ALPINE_IMAGE as final
+
+COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
+COPY --from=builder /ffmpeg/lib/* /usr/lib/
+
+ARG RPI_VERSION=0.20200813-r0
+
+RUN apk add --no-cache \
+  ca-certificates \
+  tzdata \
+  alsa-lib \
+  raspberrypi-libs=${RPI_VERSION} && \
+  echo "/opt/vc/lib:/usr/local/lib:/usr/lib:/lib" > /etc/ld-musl-armhf.path && \
+  ffmpeg -buildconf
+
+WORKDIR /tmp
+ENTRYPOINT ["/usr/bin/ffmpeg"]
+CMD ["-version"]

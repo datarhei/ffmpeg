@@ -1,0 +1,79 @@
+name: 'Build base:alpine-ffmpeg-rpi'
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - '**'
+
+jobs:
+  docker:
+    runs-on: [self-hosted]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: cardinalby/export-env-action@v1
+        with:
+          envFile: 'Build.alpine.env'    
+          export: 'true'
+          expandWithJobEnv: 'true'
+          expand: 'true'
+
+      - uses: cardinalby/export-env-action@v1
+        with:
+          envFile: 'Build.alpine.rpi.env'    
+          export: 'true'
+          expandWithJobEnv: 'true'
+          expand: 'true'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@master
+        with:
+          platforms: linux/arm/v7
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Multi-Arch
+        uses: docker/build-push-action@v2
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          file: ./Dockerfile.alpine.rpi
+          build-args: |
+            ALPINE_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
+            FREETYPE_VERSION=${{ env.FREETYPE_VERSION }}
+            XML2_VERSION=${{ env.XML2_VERSION }}
+            SRT_VERSION=${{ env.SRT_VERSION }}
+            X264_VERSION=${{ env.X264_VERSION }}
+            X265_VERSION=${{ env.X265_VERSION }}
+            VPX_VERSION=${{ env.VPX_VERSION }}
+            LAME_VERSION=${{ env.LAME_VERSION }}
+            OPUS_VERSION=${{ env.OPUS_VERSION }}
+            VORBIS_VERSION=${{ env.VORBIS_VERSION }}
+            FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
+            RPI_VERSION=${{ env.RPI_VERSION }}
+          platforms: linux/arm/v7
+          push: true
+          tags: |
+            datarhei/base:${{ env.OS_NAME }}-ffmpeg-rpi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
+            datarhei/base:${{ env.OS_NAME }}-ffmpeg-rpi-latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new

@@ -1,0 +1,88 @@
+name: 'Build base:alpine-ffmpeg-vvapi'
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - '**'
+
+jobs:
+  docker:
+    runs-on: [self-hosted]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - uses: cardinalby/export-env-action@v1
+        with:
+          envFile: 'Build.alpine.env'    
+          export: 'true'
+          expandWithJobEnv: 'true'
+          expand: 'true'
+
+      - uses: cardinalby/export-env-action@v1
+        with:
+          envFile: 'Build.alpine.vaapi.env'    
+          export: 'true'
+          expandWithJobEnv: 'true'
+          expand: 'true'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@master
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Multi-Arch
+        uses: docker/build-push-action@v2
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          file: ./Dockerfile.alpine.vaapi
+          build-args: |
+            ALPINE_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
+            FREETYPE_VERSION=${{ env.FREETYPE_VERSION }}
+            XML2_VERSION=${{ env.XML2_VERSION }}
+            SRT_VERSION=${{ env.SRT_VERSION }}
+            X264_VERSION=${{ env.X264_VERSION }}
+            X265_VERSION=${{ env.X265_VERSION }}
+            VPX_VERSION=${{ env.VPX_VERSION }}
+            LAME_VERSION=${{ env.LAME_VERSION }}
+            OPUS_VERSION=${{ env.OPUS_VERSION }}
+            VORBIS_VERSION=${{ env.VORBIS_VERSION }}
+            FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
+            LIBAV_VERSION=${{ env.LIBAV_VERSION }}
+            LIBVDPAU_VERSION=${{ env.LIBVDPAU_VERSION }}
+            MESA_VA_GALLIUM_VERSION=${{ env.MESA_VA_GALLIUM_VERSION }}
+            MESA_VDPAU_GALLIUM_VERSION=${{ env.MESA_VDPAU_GALLIUM_VERSION }}
+            LIBVA_VDPAU_DRIVER_VERSION=${{ env.LIBVA_VDPAU_DRIVER_VERSION }}
+            INTEL_GMMLIB_VERSION=${{ env.INTEL_GMMLIB_VERSION }}
+            INTEL_MEDIA_DRIVER_VERSION=${{ env.INTEL_MEDIA_DRIVER_VERSION }}
+            INTEL_MEDIA_SDK_VERSION=${{ env.INTEL_MEDIA_SDK_VERSION }}
+            INTEL_VAAPI_DRIVER=${{ env.INTEL_VAAPI_DRIVER }}
+
+          platforms: linux/amd64
+          push: true
+          tags: |
+            datarhei/base:${{ env.OS_NAME }}-ffmpeg-vaapi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
+            datarhei/base:${{ env.OS_NAME }}-ffmpeg-vaapi-latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
