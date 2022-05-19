@@ -251,8 +251,7 @@ index bdeff9a..f8821e1 100644
 +
 +            av_bprintf(&buf, "{");
 +            av_bprintf(&buf, "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,", ctx->url, ctx->oformat->name, ost->file_index, ost->index);
-+            av_bprintf(&buf, "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%"PRId64",", media_type_string(enc->codec_type), avcodec_get_name(enc->codec_id), 
-ost->stream_copy ? "copy" : (enc->codec ? enc->codec->name : "unknown"),  enc->bit_rate / 1000);
++            av_bprintf(&buf, "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%"PRId64",", media_type_string(enc->codec_type), avcodec_get_name(enc->codec_id), ost->stream_copy ? "copy" : (enc->codec ? enc->codec->name : "unknown"),  enc->bit_rate / 1000);
 +            av_bprintf(&buf, "\"duration_sec\":%f,\"language\":\"%s\"", 0.0, lang != NULL ? lang->value : "und");
 +
 +            if(enc->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -261,8 +260,7 @@ ost->stream_copy ? "copy" : (enc->codec ? enc->codec->name : "unknown"),  enc->b
 +                    fps = av_q2d(st->avg_frame_rate);
 +                }
 +
-+                av_bprintf(&buf, ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d", fps, st->codecpar->format == AV_PIX_FMT_NONE ? "none" : 
-av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->height);
++                av_bprintf(&buf, ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d", fps, st->codecpar->format == AV_PIX_FMT_NONE ? "none" : av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->height);
 +            }
 +            else if(enc->codec_type == AVMEDIA_TYPE_AUDIO) {
 +                char layout[128];
@@ -379,8 +377,7 @@ index 9c820ab..8471dc9 100644
 +
 +            av_bprintf(&buf, "{");
 +            av_bprintf(&buf, "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,", ctx->url, ctx->iformat->name, i, j);
-+            av_bprintf(&buf, "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%"PRId64",", media_type_string(dec->codec_type), avcodec_get_name(dec->codec_id), 
-dec->codec ? dec->codec->name : "unknown", dec->bit_rate / 1000);
++            av_bprintf(&buf, "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%"PRId64",", media_type_string(dec->codec_type), avcodec_get_name(dec->codec_id), dec->codec ? dec->codec->name : "unknown", dec->bit_rate / 1000);
 +            av_bprintf(&buf, "\"duration_sec\":%f,\"language\":\"%s\"", duration, lang != NULL ? lang->value : "und");
 +
 +            if(dec->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -389,8 +386,7 @@ dec->codec ? dec->codec->name : "unknown", dec->bit_rate / 1000);
 +                    fps = av_q2d(st->avg_frame_rate);
 +                }
 +
-+                av_bprintf(&buf, ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d", fps, st->codecpar->format == AV_PIX_FMT_NONE ? "none" : 
-av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->height);
++                av_bprintf(&buf, ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d", fps, st->codecpar->format == AV_PIX_FMT_NONE ? "none" : av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->height);
 +            }
 +            else if(dec->codec_type == AVMEDIA_TYPE_AUDIO) {
 +                char layout[128];
@@ -441,5 +437,4 @@ av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->he
 base-commit: 71650a0ab9193298b29c86db433f43b2feb62b93
 -- 
 2.32.0 (Apple Git-132)
-
 
