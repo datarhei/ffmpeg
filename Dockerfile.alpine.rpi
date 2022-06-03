@@ -14,7 +14,9 @@ ARG LAME_VERSION=3.100-r0
 ARG OPUS_VERSION=1.3.1-r1
 ARG VORBIS_VERSION=1.3.7-r0
 ARG ALSA_VERSION=1.2.5.1-r1
-ARG FFMPEG_VERSION=5.0.1
+ARG FBDEV_VERSION=0.5.0-r3
+ARG V4L_VERSION=1.22.1-r1
+ARG FFMPEG_VERSION=4.4.2
 
 ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig \
   SRC=/usr
@@ -58,7 +60,8 @@ RUN apk add \
   lame-dev=${LAME_VERSION} \
   opus-dev=${OPUS_VERSION} \
   libvorbis-dev=${VORBIS_VERSION} \
-  alsa-lib-dev=${ALSA_VERSION}
+  alsa-lib-dev=${ALSA_VERSION} \
+  v4l-utils-dev=${V4L_VERSION} 
 
 # install and patch ffmpeg
 RUN mkdir -p /dist && cd /dist && \
@@ -68,7 +71,10 @@ RUN mkdir -p /dist && cd /dist && \
 
 COPY ./contrib /contrib
 
+RUN echo $uname
+
 RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
+  apkArch="$(apk --print-arch)" && if [ $apkArch != "aarch64" ]; then MMAL_SUPPORT="--enable-mmal"; fi && \
   patch -p1 < /contrib/ffmpeg-jsonstats.patch && \
   ./configure \
   --extra-version=datarhei \
@@ -83,7 +89,8 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libxml2 \
   --enable-omx \
   --enable-omx-rpi \
-  --enable-mmal \
+    $MMAL_SUPPORT \
+  --enable-libv4l2 \
   --enable-v4l2_m2m \
   --enable-alsa \
   --enable-libfreetype \
@@ -105,40 +112,44 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
 
 RUN mkdir -p /ffmpeg/lib && \
   cp \
-  /usr/lib/libfreetype.so.6 \
-  /usr/lib/libbrotlidec.so.1 \
-  /usr/lib/libbrotlicommon.so.1 \
-  /usr/lib/libbz2.so.1 \
-  /usr/lib/libpng16.so.16 \
-  /usr/lib/libxml2.so.2 \
-  /usr/lib/liblzma.so.5 \
-  /usr/lib/libsrt.so.1 \
-  /usr/lib/libx264.so.163 \
-  /usr/lib/libx265.so.199 \
-  /usr/lib/libvpx.so.6 \
-  /usr/lib/libmp3lame.so.0 \
-  /usr/lib/libopus.so.0 \
-  /usr/lib/libvorbis.so.0 \
-  /usr/lib/libogg.so.0 \
-  /usr/lib/libvorbisenc.so.2 \
-  /usr/lib/libgcc_s.so.1 \
-  /usr/lib/libstdc++.so.6 \
-  /ffmpeg/lib
+    /usr/lib/libfreetype.so.6 \
+    /usr/lib/libbrotlidec.so.1 \
+    /usr/lib/libbrotlicommon.so.1 \
+    /usr/lib/libbz2.so.1 \
+    /usr/lib/libpng16.so.16 \
+    /usr/lib/libxml2.so.2 \
+    /usr/lib/liblzma.so.5 \
+    /usr/lib/libsrt.so.1 \
+    /usr/lib/libx264.so.163 \
+    /usr/lib/libx265.so.199 \
+    /usr/lib/libvpx.so.6 \
+    /usr/lib/libmp3lame.so.0 \
+    /usr/lib/libopus.so.0 \
+    /usr/lib/libvorbis.so.0 \
+    /usr/lib/libogg.so.0 \
+    /usr/lib/libvorbisenc.so.2 \
+    /usr/lib/libgcc_s.so.1 \
+    /usr/lib/libstdc++.so.6 \
+    /ffmpeg/lib
 
 FROM $ALPINE_IMAGE as final
 
 COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder /ffmpeg/lib/* /usr/lib/
 
+ARG FBDEV_VERSION=0.5.0-r3
+ARG V4L_VERSION=1.22.1-r1
 ARG RPI_VERSION=0.20200813-r0
 
 RUN apk add --no-cache \
-  ca-certificates \
-  tzdata \
-  alsa-lib \
-  raspberrypi-libs=${RPI_VERSION} && \
-  echo "/opt/vc/lib:/usr/local/lib:/usr/lib:/lib" > /etc/ld-musl-armhf.path && \
-  ffmpeg -buildconf
+      ca-certificates \
+      tzdata \
+      alsa-lib \
+      xf86-video-fbdev=${FBDEV_VERSION} \
+      v4l-utils=${V4L_VERSION} \
+      raspberrypi-libs=${RPI_VERSION} && \
+    echo "/opt/vc/lib:/usr/local/lib:/usr/lib:/lib" > /etc/ld-musl-armhf.path && \
+    ffmpeg -buildconf
 
 WORKDIR /tmp
 ENTRYPOINT ["/usr/bin/ffmpeg"]
