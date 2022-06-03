@@ -76,6 +76,5 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-cuda-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}-${{env.CUDA_VERSION}}
-            datarhei/base:${{ env.OS_NAME }}-ffmpeg-cuda-latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new

@@ -83,6 +83,5 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-vaapi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
-            datarhei/base:${{ env.OS_NAME }}-ffmpeg-vaapi-latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
