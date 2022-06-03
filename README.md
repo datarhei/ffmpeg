@@ -1,6 +1,8 @@
 # FFmpeg Base
 FFmpeg base image for [datarhei/core](https://github.com/datarhei/core).
 
+Branch: 4.4
+
 ## Config:
 ```sh
 --enable-libv4l2
