@@ -1,4 +1,4 @@
-name: 'Build base:alpine-ffmpeg-vvapi'
+name: 'base:alpine-ffmpeg-vvapi'
 
 on:
   workflow_dispatch:

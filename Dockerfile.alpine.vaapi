@@ -7,12 +7,12 @@ ARG LIBVDPAU_VERSION=1.5-r0
 ARG MESA_VA_GALLIUM_VERSION=21.3.8-r1
 ARG MESA_VDPAU_GALLIUM_VERSION=21.3.8-r1
 ARG LIBVA_VDPAU_DRIVER_VERSION=0.7.4-r2
-ARG INTEL_GMMLIB_VERSION=22.1.2-r0
-ARG INTEL_MEDIA_DRIVER_VERSION=22.4.1-r0
-ARG INTEL_MEDIA_SDK_VERSION=22.4.1-r0
+ARG INTEL_GMMLIB_VERSION=22.1.3-r0
+ARG INTEL_MEDIA_DRIVER_VERSION=22.4.2-r0
+ARG INTEL_MEDIA_SDK_VERSION=22.4.2-r0
 ARG INTEL_VAAPI_DRIVER=2.4.1-r0
 
-ARG FREETYPE_VERSION=2.11.1-r1
+ARG FREETYPE_VERSION=2.11.1-r2
 ARG SRT_VERSION=1.4.2-r1
 ARG X264_VERSION=20210613-r0
 ARG X265_VERSION=3.5-r0
@@ -20,7 +20,9 @@ ARG VPX_VERSION=1.10.0-r0
 ARG LAME_VERSION=3.100-r0
 ARG OPUS_VERSION=1.3.1-r1
 ARG VORBIS_VERSION=1.3.7-r0
-ARG FFMPEG_VERSION=5.0.1
+ARG FBDEV_VERSION=0.5.0-r3
+ARG V4L_VERSION=1.22.1-r1
+ARG FFMPEG_VERSION=4.4.2
 
 ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig \
 	SRC=/usr
@@ -60,7 +62,8 @@ RUN apk add -U \
 	libvpx-dev=${VPX_VERSION} \
 	lame-dev=${LAME_VERSION} \
 	opus-dev=${OPUS_VERSION} \
-	libvorbis-dev=${VORBIS_VERSION}
+	libvorbis-dev=${VORBIS_VERSION} \
+  v4l-utils-dev=${V4L_VERSION} 
   
 # install shared ffmpeg libs 
 RUN echo http://dl-2.alpinelinux.org/alpine/edge/main >> /etc/apk/repositories
@@ -102,6 +105,8 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
 	--enable-version3 \
 	--enable-static \
 	--enable-openssl \
+	--enable-libv4l2 \
+	--enable-v4l2_m2m \
 	--enable-libfreetype \
 	--enable-libsrt \
 	--enable-libx264 \
@@ -110,7 +115,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
 	--enable-libmp3lame \
 	--enable-libopus \
 	--enable-libvorbis \
-  --enable-libmfx \
+  	--enable-libmfx \
 	--enable-vaapi \
 	--enable-vdpau \
 	--disable-ffplay \
@@ -155,6 +160,7 @@ RUN mkdir -p /ffmpeg/lib && \
     /usr/lib/libvdpau.so.1 \
       /usr/lib/libXext.so.6 \
     /usr/lib/libX11.so.6 \
+    /usr/lib/libva-x11.so.2 \
 		/ffmpeg/lib
 
 FROM $ALPINE_IMAGE as final
@@ -162,10 +168,33 @@ FROM $ALPINE_IMAGE as final
 COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder /ffmpeg/lib/* /usr/lib/
 
-RUN apk add --no-cache \
-  ca-certificates \
-  tzdata && \
-  ffmpeg -buildconf
+ARG MESA_VA_GALLIUM_VERSION=21.3.8-r1
+ARG MESA_VDPAU_GALLIUM_VERSION=21.3.8-r1
+ARG LIBVA_VDPAU_DRIVER_VERSION=0.7.4-r2
+ARG INTEL_MEDIA_DRIVER_VERSION=22.4.2-r0
+ARG INTEL_VAAPI_DRIVER=2.4.1-r0
+
+ARG FBDEV_VERSION=0.5.0-r3
+ARG V4L_VERSION=1.22.1-r1
+
+# install shared ffmpeg libs 
+RUN apk add --no-cache -U \
+      ca-certificates \
+      tzdata \
+      xf86-video-fbdev=${FBDEV_VERSION} \
+      v4l-utils=${V4L_VERSION} && \
+    echo http://dl-2.alpinelinux.org/alpine/edge/main >> /etc/apk/repositories && \
+    apk add --no-cache -U \
+      libva-intel-driver=${INTEL_VAAPI_DRIVER} \
+      mesa-va-gallium=${MESA_VA_GALLIUM_VERSION} \
+      mesa-vdpau-gallium=${MESA_VDPAU_GALLIUM_VERSION} && \
+    echo http://dl-2.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories && \
+    apk add --no-cache -U \
+      intel-media-driver=${INTEL_MEDIA_DRIVER_VERSION} && \
+    echo http://dl-2.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \
+    apk add --no-cache -U \
+      libva-vdpau-driver=${LIBVA_VDPAU_DRIVER_VERSION} && \
+    ffmpeg -buildconf
 
 WORKDIR /tmp
 ENTRYPOINT ["/usr/bin/ffmpeg"]
