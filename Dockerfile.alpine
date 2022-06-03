@@ -2,8 +2,8 @@ ARG ALPINE_IMAGE=alpine:3.15
 
 FROM $ALPINE_IMAGE as builder
 
-ARG FREETYPE_VERSION=2.11.1-r1
-ARG XML2_VERSION=2.9.13-r0
+ARG FREETYPE_VERSION=2.11.1-r2
+ARG XML2_VERSION=2.9.14-r0
 ARG SRT_VERSION=1.4.2-r1
 ARG X264_VERSION=20210613-r0
 ARG X265_VERSION=3.5-r0
@@ -11,7 +11,9 @@ ARG VPX_VERSION=1.10.0-r0
 ARG LAME_VERSION=3.100-r0
 ARG OPUS_VERSION=1.3.1-r1
 ARG VORBIS_VERSION=1.3.7-r0
-ARG FFMPEG_VERSION=5.0.1
+ARG FBDEV_VERSION=0.5.0-r3
+ARG V4L_VERSION=1.22.1-r1
+ARG FFMPEG_VERSION=4.4.2
 
 ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig \
   SRC=/usr
@@ -52,7 +54,8 @@ RUN apk add -U \
   libvpx-dev=${VPX_VERSION} \
   lame-dev=${LAME_VERSION} \
   opus-dev=${OPUS_VERSION} \
-  libvorbis-dev=${VORBIS_VERSION}
+  libvorbis-dev=${VORBIS_VERSION} \
+  v4l-utils-dev=${V4L_VERSION} 
 
 # install and patch ffmpeg
 RUN mkdir -p /dist && cd /dist && \
@@ -75,6 +78,8 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-static \
   --enable-openssl \
   --enable-libxml2 \
+  --enable-libv4l2 \
+  --enable-v4l2_m2m \
   --enable-libfreetype \
   --enable-libsrt \
   --enable-libx264 \
@@ -118,10 +123,15 @@ FROM $ALPINE_IMAGE as final
 COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder /ffmpeg/lib/* /usr/lib/
 
+ARG FBDEV_VERSION=0.5.0-r3
+ARG V4L_VERSION=1.22.1-r1
+
 RUN apk add --no-cache \
-  ca-certificates \
-  tzdata && \
-  ffmpeg -buildconf
+      ca-certificates \
+      tzdata \
+      xf86-video-fbdev=${FBDEV_VERSION} \
+      v4l-utils=${V4L_VERSION} && \
+    ffmpeg -buildconf
 
 WORKDIR /tmp
 ENTRYPOINT ["/usr/bin/ffmpeg"]

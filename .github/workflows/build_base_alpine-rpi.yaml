@@ -1,4 +1,4 @@
-name: 'Build base:alpine-ffmpeg-rpi'
+name: 'base:alpine-ffmpeg-rpi'
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@master
         with:
-          platforms: linux/arm/v7
+          platforms: linux/arm64, linux/arm/v7
 
       - name: Set up Docker Buildx
         id: buildx
@@ -70,7 +70,7 @@ jobs:
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
             RPI_VERSION=${{ env.RPI_VERSION }}
-          platforms: linux/arm/v7
+          platforms: linux/arm64, linux/arm/v7
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-rpi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}

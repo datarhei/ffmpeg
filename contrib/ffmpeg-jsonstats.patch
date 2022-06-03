@@ -1,7 +1,7 @@
-From 815dc4ce1931ab11baf2fd68986974eafcdd76f1 Mon Sep 17 00:00:00 2001
-From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 18 May 2022 21:40:50 +0200
-Subject: [PATCH v21] JSON progress report (ffmpeg 5.0)
+From df7dfb5351f77a672de5a6d613678888f560afcb Mon Sep 17 00:00:00 2001
+From: Ingo Oppermann <ingo@oppermann.ch>
+Date: Tue, 1 Jun 2021 08:53:52 +0200
+Subject: [PATCH v20] JSON progress report (ffmpeg 4.4)
 
 ---
  fftools/ffmpeg.c     | 262 +++++++++++++++++++++++++++++++++++++++++--
@@ -10,10 +10,10 @@ Subject: [PATCH v21] JSON progress report (ffmpeg 5.0)
  3 files changed, 322 insertions(+), 10 deletions(-)
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index bdeff9a..f8821e1 100644
+index 46bb014..e5e00c9 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
-@@ -1673,12 +1673,11 @@ static void print_final_stats(int64_t total_size)
+@@ -1699,12 +1699,11 @@ static void print_final_stats(int64_t total_size)
      }
  }
  
@@ -28,7 +28,7 @@ index bdeff9a..f8821e1 100644
      AVCodecContext *enc;
      int frame_number, vid, i;
      double bitrate;
-@@ -1707,13 +1706,6 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1733,13 +1732,6 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
  
      t = (cur_time-timer_start) / 1000000.0;
  
@@ -42,7 +42,7 @@ index bdeff9a..f8821e1 100644
      vid = 0;
      av_bprint_init(&buf, 0, AV_BPRINT_SIZE_AUTOMATIC);
      av_bprint_init(&buf_script, 0, AV_BPRINT_SIZE_AUTOMATIC);
-@@ -1796,6 +1788,9 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1822,6 +1814,9 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
  
          if (is_last_report)
              nb_frames_drop += ost->last_dropped;
@@ -52,7 +52,7 @@ index bdeff9a..f8821e1 100644
      }
  
      secs = FFABS(pts) / AV_TIME_BASE;
-@@ -1883,6 +1878,251 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1909,6 +1904,251 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
          print_final_stats(total_size);
  }
  
@@ -103,7 +103,7 @@ index bdeff9a..f8821e1 100644
 +
 +            av_bprintf(&buf, "{");
 +            av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", i, j);
-+
++           
 +            av_bprintf(&buf, "\"frame\":%"PRIu64",\"packet\":%"PRIu64",", ist->frames_decoded == 0 ? ist->nb_packets : ist->frames_decoded, ist->nb_packets);
 +
 +            av_bprintf(&buf, "\"size_kb\":%.0f", ist->data_size / 1024.0);
@@ -114,7 +114,7 @@ index bdeff9a..f8821e1 100644
 +            else {
 +                av_bprintf(&buf, "},");
 +            }
-+        }
++        } 
 +    }
 +
 +    av_bprintf(&buf, "],");
@@ -304,20 +304,20 @@ index bdeff9a..f8821e1 100644
  static void ifilter_parameters_from_codecpar(InputFilter *ifilter, AVCodecParameters *par)
  {
      // We never got any input. Set a fake format, which will
-@@ -2967,6 +3207,8 @@ static int check_init_output_file(OutputFile *of, int file_index)
+@@ -3048,6 +3288,8 @@ static int check_init_output_file(OutputFile *of, int file_index)
      av_dump_format(of->ctx, file_index, of->ctx->url, 1);
      nb_output_dumped++;
  
 +    print_json_outputs();
 +
-     if (sdp_filename || want_sdp) {
-         ret = print_sdp();
-         if (ret < 0) {
+     if (sdp_filename || want_sdp)
+         print_sdp();
+ 
 diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
-index 9b200b8..bd053f4 100644
+index 606f2af..e7e9a46 100644
 --- a/fftools/ffmpeg.h
 +++ b/fftools/ffmpeg.h
-@@ -622,6 +622,7 @@ extern int debug_ts;
+@@ -621,6 +621,7 @@ extern int debug_ts;
  extern int exit_on_error;
  extern int abort_on_flags;
  extern int print_stats;
@@ -326,10 +326,10 @@ index 9b200b8..bd053f4 100644
  extern int qp_hist;
  extern int stdin_interaction;
 diff --git a/fftools/ffmpeg_opt.c b/fftools/ffmpeg_opt.c
-index 9c820ab..8471dc9 100644
+index 807e783..d48c02a 100644
 --- a/fftools/ffmpeg_opt.c
 +++ b/fftools/ffmpeg_opt.c
-@@ -43,6 +43,7 @@
+@@ -41,6 +41,7 @@
  #include "libavutil/parseutils.h"
  #include "libavutil/pixdesc.h"
  #include "libavutil/pixfmt.h"
@@ -337,15 +337,15 @@ index 9c820ab..8471dc9 100644
  
  #define DEFAULT_PASS_LOGFILENAME_PREFIX "ffmpeg2pass"
  
-@@ -160,6 +161,7 @@ int debug_ts          = 0;
+@@ -167,6 +168,7 @@ int debug_ts          = 0;
  int exit_on_error     = 0;
  int abort_on_flags    = 0;
  int print_stats       = -1;
 +int print_jsonstats   = -1;
  int qp_hist           = 0;
  int stdin_interaction = 1;
- float max_error_rate  = 2.0/3;
-@@ -3433,6 +3435,69 @@ static int open_files(OptionGroupList *l, const char *inout,
+ int frame_bits_per_raw_sample = 0;
+@@ -3348,6 +3350,69 @@ static int open_files(OptionGroupList *l, const char *inout,
      return 0;
  }
  
@@ -415,7 +415,7 @@ index 9c820ab..8471dc9 100644
  int ffmpeg_parse_options(int argc, char **argv)
  {
      OptionParseContext octx;
-@@ -3466,6 +3531,8 @@ int ffmpeg_parse_options(int argc, char **argv)
+@@ -3381,6 +3446,8 @@ int ffmpeg_parse_options(int argc, char **argv)
          goto fail;
      }
  
@@ -424,7 +424,7 @@ index 9c820ab..8471dc9 100644
      /* create the complex filtergraphs */
      ret = init_complex_filters();
      if (ret < 0) {
-@@ -3674,6 +3741,8 @@ const OptionDef options[] = {
+@@ -3584,6 +3651,8 @@ const OptionDef options[] = {
          "enable automatic conversion filters globally" },
      { "stats",          OPT_BOOL,                                    { &print_stats },
          "print progress report during encoding", },
@@ -434,7 +434,6 @@ index 9c820ab..8471dc9 100644
          "set the period at which ffmpeg updates stats and -progress output", "time" },
      { "attach",         HAS_ARG | OPT_PERFILE | OPT_EXPERT |
 
-base-commit: 71650a0ab9193298b29c86db433f43b2feb62b93
+base-commit: 9dcc10e319b3533e0cef975c013b5fdf02e67ea2
 -- 
-2.32.0 (Apple Git-132)
-
+2.24.3 (Apple Git-128)

@@ -1,4 +1,4 @@
-name: 'Build base:alpine-ffmpeg'
+name: 'base:alpine-ffmpeg'
 
 on:
   workflow_dispatch:
