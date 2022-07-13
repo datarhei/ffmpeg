@@ -1,0 +1,89 @@
+From 85870fdb0530c8d12faa682bd571060b0fa8fb73 Mon Sep 17 00:00:00 2001
+From: Ingo Oppermann <ingo@datarhei.com>
+Date: Wed, 13 Jul 2022 14:26:24 +0200
+Subject: [PATCH v1] Calculate bandwidth estimate (ffmpeg 5.0)
+
+---
+ libavformat/hlsenc.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/libavformat/hlsenc.c b/libavformat/hlsenc.c
+index ef8973c..8e437de 100644
+--- a/libavformat/hlsenc.c
++++ b/libavformat/hlsenc.c
+@@ -125,6 +125,7 @@ typedef struct VariantStream {
+     AVIOContext *out;
+     AVIOContext *out_single_file;
+     int packets_written;
++    uint64_t bytes_written;
+     int init_range_length;
+     uint8_t *temp_buffer;
+     uint8_t *init_buffer;
+@@ -139,6 +140,8 @@ typedef struct VariantStream {
+     double dpp;           // duration per packet
+     int64_t start_pts;
+     int64_t end_pts;
++    int64_t scaled_start_pts;
++    int64_t scaled_cur_pts;
+     int64_t video_lastpos;
+     int64_t video_keyframe_pos;
+     int64_t video_keyframe_size;
+@@ -1482,6 +1485,16 @@ static int create_master_playlist(AVFormatContext *s,
+             bandwidth += get_stream_bit_rate(vid_st);
+         if (aud_st)
+             bandwidth += get_stream_bit_rate(aud_st);
++
++        if (bandwidth == 0) {
++            // Estimate bandwidth
++            bandwidth = (int)round((double)vs->bytes_written / (av_q2d(AV_TIME_BASE_Q) * (vs->scaled_cur_pts - vs->scaled_start_pts)) * 8);
++
++            // Reset counters
++            vs->bytes_written = 0;
++            vs->scaled_start_pts = vs->scaled_cur_pts;
++        }
++
+         bandwidth += bandwidth / 10;
+ 
+         ccgroup = NULL;
+@@ -2439,6 +2452,19 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+         return AVERROR(ENOMEM);
+     }
+ 
++    if (vs->scaled_start_pts == AV_NOPTS_VALUE) {
++        vs->scaled_start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
++    }
++
++    if (vs->scaled_cur_pts == AV_NOPTS_VALUE) {
++        vs->scaled_cur_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
++    } else {
++        int64_t pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
++        if (pts > vs->scaled_cur_pts) {
++            vs->scaled_cur_pts = pts;
++        }
++    }
++
+     end_pts = hls->recording_time * vs->number;
+ 
+     if (vs->sequence - vs->nb_entries > hls->start_sequence && hls->init_time > 0) {
+@@ -2656,6 +2682,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+     }
+ 
+     vs->packets_written++;
++    vs->bytes_written += (uint64_t)pkt->size;
+     if (oc->pb) {
+         ret = ff_write_chained(oc, stream_index, pkt, s, 0);
+         vs->video_keyframe_size += pkt->size;
+@@ -2949,6 +2976,8 @@ static int hls_init(AVFormatContext *s)
+         vs->sequence  = hls->start_sequence;
+         vs->start_pts = AV_NOPTS_VALUE;
+         vs->end_pts   = AV_NOPTS_VALUE;
++        vs->scaled_start_pts = AV_NOPTS_VALUE;
++        vs->scaled_cur_pts = AV_NOPTS_VALUE;
+         vs->current_segment_final_filename_fmt[0] = '\0';
+         vs->initial_prog_date_time = initial_program_date_time;
+ 
+
+base-commit: 82c775a733a6b3a1a951b7cb1d4fd965bfd2b4dc
+-- 
+2.32.1 (Apple Git-133)
+
