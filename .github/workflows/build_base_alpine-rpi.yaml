@@ -70,7 +70,7 @@ jobs:
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
             RPI_VERSION=${{ env.RPI_VERSION }}
-          platforms: linux/arm64, linux/arm/v7
+          platforms: linux/arm64,linux/arm/v7,linux/arm/v6
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-rpi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
