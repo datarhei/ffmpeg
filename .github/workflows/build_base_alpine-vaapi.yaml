@@ -58,7 +58,7 @@ jobs:
           context: .
           file: ./Dockerfile.alpine.vaapi
           build-args: |
-            ALPINE_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
+            BUILD_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
             FREETYPE_VERSION=${{ env.FREETYPE_VERSION }}
             XML2_VERSION=${{ env.XML2_VERSION }}
             SRT_VERSION=${{ env.SRT_VERSION }}

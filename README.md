@@ -2,7 +2,7 @@
 
 FFmpeg base image for [datarhei/core](https://github.com/datarhei/core).
 
-Branch: 5.0
+Branch: 5.1
 
 ## Config:
 
@@ -29,22 +29,25 @@ _Additional informations can be found in the Dockerfiles._
 
 | Dockerimage                                        | OS           | Plattform                                | GPU                                         |
 | -------------------------------------------------- | ------------ | ---------------------------------------- | ------------------------------------------- |
-| docker.io/datarhei/base:alpine-ffmpeg-latest       | Alpine 3.15  | linux/amd64, linux/arm64, linux/arm/v7   | -                                           |
-| docker.io/datarhei/base:alpine-ffmpeg-rpi-latest   | Alpine 3.15  | Raspberry Pi (linux/arm/v7, linux/arm64) | MMAL/OMX/V4L2-M2M (32bit), V4L2-M2M (64bit) |
-| docker.io/datarhei/base:alpine-ffmpeg-vaapi-latest | Alpine 3.15  | linux/amd64                              | Intel VAAPI                                 |
-| docker.io/datarhei/base:ubuntu-ffmpeg-cuda-latest  | Ubuntu 20.03 | linux/amd64                              | Nvidia Cuda                                 |
+| docker.io/datarhei/base:alpine-ffmpeg-5.1.2        | Alpine 3.16  | linux/amd64, linux/arm64, linux/arm/v7   | -                                           |
+| docker.io/datarhei/base:alpine-ffmpeg-rpi-5.1.2    | Alpine 3.16  | Raspberry Pi (linux/arm/v7, linux/arm64) | MMAL/OMX/V4L2-M2M (32bit), V4L2-M2M (64bit) |
+| docker.io/datarhei/base:alpine-ffmpeg-vaapi-5.1.2  | Alpine 3.16  | linux/amd64                              | Intel VAAPI                                 |
+| docker.io/datarhei/base:ubuntu-ffmpeg-cuda-5.1.2   | Ubuntu 20.03 | linux/amd64                              | Nvidia Cuda                                 |
 
 More tags: https://hub.docker.com/repository/docker/datarhei/base/general
 
-## Testing
+## Build & test
 
 ```sh
-$ docker buildx create builder
-$ docker buildx use builder
-$ docker buildx inspect builder --bootstrap
-$ docker buildx build --platform linux/amd64 linux/arm64 linux/arm/v7 -f Dockerfile -t ffmpeg:dev --load .
-$ docker buildx rm builder
+$ git clone github.com/datarhei/ffmpeg
+$ ./Build.sh {arg} 
 ```
+
+Args:
+ - default (alpine-ffmpeg-latest)
+ - rpi (alpine-ffmpeg-rpi-latest)
+ - vaapi (alpine-ffmpeg-vaapi-latest)
+ - cuda (ubuntu-ffmpeg-cuda-latest)
 
 ## Known problems:
 

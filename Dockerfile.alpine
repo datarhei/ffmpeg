@@ -1,6 +1,6 @@
-ARG ALPINE_IMAGE=alpine:3.15
+ARG BUILD_IMAGE=alpine:3.15
 
-FROM $ALPINE_IMAGE as builder
+FROM $BUILD_IMAGE as builder
 
 ARG FREETYPE_VERSION=2.11.1-r2
 ARG XML2_VERSION=2.9.14-r0
@@ -106,10 +106,11 @@ RUN mkdir -p /ffmpeg/lib && \
   /usr/lib/libpng16.so.16 \
   /usr/lib/libxml2.so.2 \
   /usr/lib/liblzma.so.5 \
-  /usr/lib/libsrt.so.1 \
+  /usr/lib/libsrt.so.1.4 \
   /usr/lib/libx264.so.163 \
   /usr/lib/libx265.so.199 \
-  /usr/lib/libvpx.so.6 \
+  /usr/lib/libnuma.so.1 \
+  /usr/lib/libvpx.so.7 \
   /usr/lib/libmp3lame.so.0 \
   /usr/lib/libopus.so.0 \
   /usr/lib/libvorbis.so.0 \
@@ -119,7 +120,7 @@ RUN mkdir -p /ffmpeg/lib && \
   /usr/lib/libstdc++.so.6 \
   /ffmpeg/lib
 
-FROM $ALPINE_IMAGE as final
+FROM $BUILD_IMAGE as final
 
 COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder /ffmpeg/lib/* /usr/lib/

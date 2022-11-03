@@ -1,19 +1,20 @@
-From 815dc4ce1931ab11baf2fd68986974eafcdd76f1 Mon Sep 17 00:00:00 2001
+From ae76cd00ce561f8a22179ffa56e8b1a04afdfae8 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 18 May 2022 21:40:50 +0200
-Subject: [PATCH v21] JSON progress report (ffmpeg 5.0)
+Date: Tue, 25 Oct 2022 10:45:42 +0200
+Subject: [PATCH v23] JSON progress report (ffmpeg 5.1)
 
 ---
- fftools/ffmpeg.c     | 262 +++++++++++++++++++++++++++++++++++++++++--
+ fftools/ffmpeg.c     | 205 ++++++++++++++++++++++++++++--
  fftools/ffmpeg.h     |   1 +
- fftools/ffmpeg_opt.c |  69 ++++++++++++
- 3 files changed, 322 insertions(+), 10 deletions(-)
+ fftools/ffmpeg_mux.c | 294 +++++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_opt.c | 107 ++++++++++++++++
+ 4 files changed, 597 insertions(+), 10 deletions(-)
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index bdeff9a..f8821e1 100644
+index e7384f05..f52ff4f1 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
-@@ -1673,12 +1673,11 @@ static void print_final_stats(int64_t total_size)
+@@ -1504,12 +1504,11 @@ static void print_final_stats(int64_t total_size)
      }
  }
  
@@ -26,9 +27,9 @@ index bdeff9a..f8821e1 100644
 -    int64_t total_size;
 +    int64_t total_size = 0;
      AVCodecContext *enc;
-     int frame_number, vid, i;
+     int vid, i;
      double bitrate;
-@@ -1707,13 +1706,6 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1538,13 +1537,6 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
  
      t = (cur_time-timer_start) / 1000000.0;
  
@@ -42,7 +43,7 @@ index bdeff9a..f8821e1 100644
      vid = 0;
      av_bprint_init(&buf, 0, AV_BPRINT_SIZE_AUTOMATIC);
      av_bprint_init(&buf_script, 0, AV_BPRINT_SIZE_AUTOMATIC);
-@@ -1796,6 +1788,9 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1627,6 +1619,9 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
  
          if (is_last_report)
              nb_frames_drop += ost->last_dropped;
@@ -52,17 +53,24 @@ index bdeff9a..f8821e1 100644
      }
  
      secs = FFABS(pts) / AV_TIME_BASE;
-@@ -1883,6 +1878,251 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1714,6 +1709,196 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
          print_final_stats(total_size);
  }
  
++/**
++ * Print progress report in JSON format
++ *
++ * @param is_last_report Whether this is the last report
++ * @param timer_start Time when the processing started
++ * @param cur_time Current processing time of the stream
++ */
 +static void print_json_report(int is_last_report, int64_t timer_start, int64_t cur_time)
 +{
 +    AVBPrint buf;
 +    InputStream *ist;
 +    OutputStream *ost;
 +    uint64_t stream_size, total_size = 0;
-+    AVCodecContext *enc, *dec;
++    AVCodecContext *enc;
 +    int i, j;
 +    uint64_t first_vid, first_frame_number = 0, first_packet_number = 0;
 +    double speed;
@@ -73,45 +81,47 @@ index bdeff9a..f8821e1 100644
 +    float t, q;
 +    float first_q = -1;
 +
-+    if (!print_jsonstats && !is_last_report && !progress_avio) {
++    if(!print_jsonstats && !is_last_report && !progress_avio) {
 +        return;
 +    }
 +
-+    if (!is_last_report) {
-+        if (last_time == -1) {
++    if(!is_last_report) {
++        if(last_time == -1) {
 +            last_time = cur_time;
 +            return;
 +        }
-+        if ((cur_time - last_time) < 500000) {
++        if((cur_time - last_time) < 500000) {
 +            return;
 +        }
 +        last_time = cur_time;
 +    }
 +
-+    t = (cur_time-timer_start) / 1000000.0;
++    t = (cur_time - timer_start) / 1000000.0;
 +
 +    av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
 +
 +    av_bprintf(&buf, "ffmpeg.progress:{");
 +    av_bprintf(&buf, "\"inputs\":[");
-+    for (i = 0; i < nb_input_files; i++) {
++    for(i = 0; i < nb_input_files; i++) {
 +        InputFile *f = input_files[i];
 +
-+        for (j = 0; j < f->nb_streams; j++) {
++        for(j = 0; j < f->nb_streams; j++) {
 +            ist = input_streams[f->ist_index + j];
-+            dec = ist->dec_ctx;
 +
 +            av_bprintf(&buf, "{");
 +            av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", i, j);
 +
-+            av_bprintf(&buf, "\"frame\":%"PRIu64",\"packet\":%"PRIu64",", ist->frames_decoded == 0 ? ist->nb_packets : ist->frames_decoded, ist->nb_packets);
++            av_bprintf(&buf,
++                "\"frame\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
++                ist->frames_decoded == 0 ? ist->nb_packets
++                                         : ist->frames_decoded,
++                ist->nb_packets);
 +
 +            av_bprintf(&buf, "\"size_kb\":%.0f", ist->data_size / 1024.0);
 +
 +            if(i == (nb_input_files - 1) && j == (f->nb_streams - 1)) {
 +                av_bprintf(&buf, "}");
-+            }
-+            else {
++            } else {
 +                av_bprintf(&buf, "},");
 +            }
 +        }
@@ -119,35 +129,34 @@ index bdeff9a..f8821e1 100644
 +
 +    av_bprintf(&buf, "],");
 +
-+    // check libavcodec/utils.c:avcodec_string
-+    // check libavformat/dump.c:av_dump_format
-+    // check libavcodec/avcodec.h:struct AVCodec and struct AVCodecContext
-+    // check libavformat/avformat.h:struct AVStream
-+    // check fftools/ffmpeg.h:struct OutputStream
-+
 +    first_vid = 1;
 +
 +    av_bprintf(&buf, "\"outputs\":[");
-+    for (i = 0; i < nb_output_streams; i++) {
-+        OutputFile *f;
++    for(i = 0; i < nb_output_streams; i++) {
 +        q = -1;
 +        ost = output_streams[i];
-+        f = output_files[ost->file_index];
 +        enc = ost->enc_ctx;
-+        if (!ost->stream_copy) {
-+            q = ost->quality / (float) FF_QP2LAMBDA;
++        if(!ost->stream_copy) {
++            q = ost->quality / (float)FF_QP2LAMBDA;
 +        }
 +
 +        av_bprintf(&buf, "{");
-+        av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", ost->file_index, ost->index);
++        av_bprintf(
++            &buf, "\"index\":%d,\"stream\":%d,", ost->file_index, ost->index);
 +
-+        av_bprintf(&buf, "\"frame\":%"PRIu64",\"packet\":%"PRIu64",", ost->frames_encoded == 0 ? ost->packets_written : ost->frames_encoded, ost->packets_written);
++        av_bprintf(&buf,
++            "\"frame\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
++            ost->frames_encoded == 0 ? ost->packets_written
++                                     : ost->frames_encoded,
++            ost->packets_written);
 +
 +        if(enc->codec_type == AVMEDIA_TYPE_VIDEO) {
 +            av_bprintf(&buf, "\"q\":%.1f,", q);
 +
 +            if(first_vid == 1) {
-+                first_frame_number = ost->frames_encoded == 0 ? ost->packets_written : ost->frames_encoded;
++                first_frame_number = ost->frames_encoded == 0
++                    ? ost->packets_written
++                    : ost->frames_encoded;
 +                first_packet_number = ost->packets_written;
 +                first_q = q;
 +
@@ -157,12 +166,18 @@ index bdeff9a..f8821e1 100644
 +
 +        /* compute min output value */
 +        pts = INT64_MIN + 1;
-+        if (av_stream_get_end_pts(ost->st) != AV_NOPTS_VALUE) {
-+            pts = FFMAX(pts, av_rescale_q(av_stream_get_end_pts(ost->st), ost->st->time_base, AV_TIME_BASE_Q));
-+            min_pts = FFMAX(min_pts, av_rescale_q(av_stream_get_end_pts(ost->st), ost->st->time_base, AV_TIME_BASE_Q));
++        if(av_stream_get_end_pts(ost->st) != AV_NOPTS_VALUE) {
++            pts = FFMAX(pts,
++                av_rescale_q(av_stream_get_end_pts(ost->st),
++                    ost->st->time_base,
++                    AV_TIME_BASE_Q));
++            min_pts = FFMAX(min_pts,
++                av_rescale_q(av_stream_get_end_pts(ost->st),
++                    ost->st->time_base,
++                    AV_TIME_BASE_Q));
 +        }
 +
-+        if (is_last_report) {
++        if(is_last_report) {
 +            nb_frames_drop += ost->last_dropped;
 +        }
 +
@@ -173,15 +188,18 @@ index bdeff9a..f8821e1 100644
 +
 +        if(i == (nb_output_streams - 1)) {
 +            av_bprintf(&buf, "}");
-+        }
-+        else {
++        } else {
 +            av_bprintf(&buf, "},");
 +        }
 +    }
 +
 +    av_bprintf(&buf, "],");
 +
-+    av_bprintf(&buf, "\"frame\":%"PRIu64",\"packet\":%"PRIu64",\"q\":%.1f,", first_frame_number, first_packet_number, first_q);
++    av_bprintf(&buf,
++        "\"frame\":%" PRIu64 ",\"packet\":%" PRIu64 ",\"q\":%.1f,",
++        first_frame_number,
++        first_packet_number,
++        first_q);
 +
 +    av_bprintf(&buf, "\"size_kb\":%.0f,", total_size / 1024.0);
 +
@@ -194,16 +212,22 @@ index bdeff9a..f8821e1 100644
 +    hours_sign = (min_pts < 0) ? "-" : "";
 +
 +    if(min_pts != AV_NOPTS_VALUE) {
-+        av_bprintf(&buf, "\"time\":\"%s%dh%dm%d.%ds\",", hours_sign, hours, mins, secs, (100 * us) / AV_TIME_BASE);
++        av_bprintf(&buf,
++            "\"time\":\"%s%dh%dm%d.%ds\",",
++            hours_sign,
++            hours,
++            mins,
++            secs,
++            (100 * us) / AV_TIME_BASE);
 +    }
 +
 +    speed = t != 0.0 ? (double)min_pts / AV_TIME_BASE / t : -1;
 +    av_bprintf(&buf, "\"speed\":%.3g,", speed);
 +
-+    av_bprintf(&buf, "\"dup\":%d,\"drop\":%d", nb_frames_dup, nb_frames_drop);
++    av_bprintf(&buf, "\"dup\":%"PRId64",\"drop\":%"PRId64, nb_frames_dup, nb_frames_drop);
 +    av_bprintf(&buf, "}");
 +
-+    if (print_jsonstats || is_last_report) {
++    if(print_jsonstats || is_last_report) {
 +        fprintf(stderr, "%s\n", buf.str);
 +        fflush(stderr);
 +    }
@@ -211,113 +235,26 @@ index bdeff9a..f8821e1 100644
 +    av_bprint_finalize(&buf, NULL);
 +}
 +
-+static void print_json_outputs() {
-+    static int ost_all_initialized = 0;
-+    int i;
-+    int nb_initialized = 0;
-+
-+    if(print_jsonstats != 1 && print_stats != -1) {
-+        return;
-+    }
-+
-+    if(ost_all_initialized == 1) {
-+        return;
-+    }
-+
-+    // check if all outputs are initialized
-+    for (i = 0; i < nb_output_streams; i++) {
-+        OutputStream *ost = output_streams[i];
-+        if (ost->initialized) {
-+            nb_initialized++;
-+        }
-+    }
-+
-+    // only if all outputs are initialized, dump the outputs
-+    if (nb_initialized == nb_output_streams) {
-+        ost_all_initialized = 1;
-+
-+        AVBPrint buf;
-+
-+        av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
-+
-+        av_bprintf(&buf, "ffmpeg.outputs:[");
-+        for (i = 0; i < nb_output_streams; i++) {
-+            OutputStream *ost = output_streams[i];
-+            OutputFile *f = output_files[ost->file_index];
-+            AVFormatContext *ctx = f->ctx;
-+            AVStream *st = ost->st;
-+            AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
-+            AVCodecContext *enc = ost->enc_ctx;
-+
-+            av_bprintf(&buf, "{");
-+            av_bprintf(&buf, "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,", ctx->url, ctx->oformat->name, ost->file_index, ost->index);
-+            av_bprintf(&buf, "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%"PRId64",", media_type_string(enc->codec_type), avcodec_get_name(enc->codec_id), ost->stream_copy ? "copy" : (enc->codec ? enc->codec->name : "unknown"),  enc->bit_rate / 1000);
-+            av_bprintf(&buf, "\"duration_sec\":%f,\"language\":\"%s\"", 0.0, lang != NULL ? lang->value : "und");
-+
-+            if(enc->codec_type == AVMEDIA_TYPE_VIDEO) {
-+                float fps = 0;
-+                if(st->avg_frame_rate.den && st->avg_frame_rate.num) {
-+                    fps = av_q2d(st->avg_frame_rate);
-+                }
-+
-+                av_bprintf(&buf, ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d", fps, st->codecpar->format == AV_PIX_FMT_NONE ? "none" : av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->height);
-+            }
-+            else if(enc->codec_type == AVMEDIA_TYPE_AUDIO) {
-+                char layout[128];
-+
-+                av_get_channel_layout_string(layout, sizeof(layout), enc->channels, enc->channel_layout);
-+
-+                av_bprintf(&buf, ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d", enc->sample_rate, layout, enc->channels);
-+            }
-+
-+            if(i == (nb_output_streams - 1)) {
-+                av_bprintf(&buf, "}");
-+            }
-+            else {
-+                av_bprintf(&buf, "},");
-+            }
-+        }
-+
-+        av_bprintf(&buf, "]");
-+
-+        fprintf(stderr, "%s\n", buf.str);
-+
-+        av_bprint_clear(&buf);
-+    }
-+
-+    return;
-+}
-+
 +static void print_report(int is_last_report, int64_t timer_start, int64_t cur_time)
 +{
-+    if (!print_stats && !print_jsonstats && !is_last_report && !progress_avio)
++    if(!print_stats && !print_jsonstats && !is_last_report && !progress_avio)
 +        return;
 +
-+    if (print_stats == 1) {
-+        print_default_report(is_last_report, timer_start, cur_time);
-+    }
-+    else {
++    if(print_jsonstats == 1) {
 +        print_json_report(is_last_report, timer_start, cur_time);
++    } else {
++        print_default_report(is_last_report, timer_start, cur_time);
 +    }
 +}
 +
- static void ifilter_parameters_from_codecpar(InputFilter *ifilter, AVCodecParameters *par)
+ static int ifilter_parameters_from_codecpar(InputFilter *ifilter, AVCodecParameters *par)
  {
-     // We never got any input. Set a fake format, which will
-@@ -2967,6 +3207,8 @@ static int check_init_output_file(OutputFile *of, int file_index)
-     av_dump_format(of->ctx, file_index, of->ctx->url, 1);
-     nb_output_dumped++;
- 
-+    print_json_outputs();
-+
-     if (sdp_filename || want_sdp) {
-         ret = print_sdp();
-         if (ret < 0) {
+     int ret;
 diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
-index 9b200b8..bd053f4 100644
+index 391a35cf..179f2d22 100644
 --- a/fftools/ffmpeg.h
 +++ b/fftools/ffmpeg.h
-@@ -622,6 +622,7 @@ extern int debug_ts;
+@@ -636,6 +636,7 @@ extern int debug_ts;
  extern int exit_on_error;
  extern int abort_on_flags;
  extern int print_stats;
@@ -325,11 +262,330 @@ index 9b200b8..bd053f4 100644
  extern int64_t stats_period;
  extern int qp_hist;
  extern int stdin_interaction;
+diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
+index a55fd18f..3a09ba08 100644
+--- a/fftools/ffmpeg_mux.c
++++ b/fftools/ffmpeg_mux.c
+@@ -26,6 +26,8 @@
+ #include "libavutil/log.h"
+ #include "libavutil/mem.h"
+ #include "libavutil/timestamp.h"
++#include "libavutil/bprint.h"
++#include "libavutil/pixdesc.h"
+ 
+ #include "libavcodec/packet.h"
+ 
+@@ -226,6 +228,296 @@ fail:
+     return ret;
+ }
+ 
++/**
++ * Write a graph as JSON to an initialized buffer
++ *
++ * @param buf Pointer to an initialized AVBPrint buffer
++ * @param graph Pointer to a AVFilterGraph
++ */
++static void print_json_graph(AVBPrint *buf, AVFilterGraph *graph)
++{
++    int i, j;
++
++    if(graph == NULL) {
++        av_bprintf(buf, "null\n");
++        return;
++    }
++
++    av_bprintf(buf, "[");
++
++    for(i = 0; i < graph->nb_filters; i++) {
++        const AVFilterContext *filter_ctx = graph->filters[i];
++
++        for(j = 0; j < filter_ctx->nb_outputs; j++) {
++            AVFilterLink *link = filter_ctx->outputs[j];
++            if(link) {
++                const AVFilterContext *dst_filter_ctx = link->dst;
++
++                av_bprintf(buf,
++                    "{\"src_name\":\"%s\",\"src_filter\":\"%s\",\"dst_name\":\"%s\",\"dst_filter\":\"%s\",",
++                    filter_ctx->name,
++                    filter_ctx->filter->name,
++                    dst_filter_ctx->name,
++                    dst_filter_ctx->filter->name);
++                av_bprintf(buf,
++                    "\"inpad\":\"%s\",\"outpad\":\"%s\",",
++                    avfilter_pad_get_name(link->srcpad, 0),
++                    avfilter_pad_get_name(link->dstpad, 0));
++                av_bprintf(buf,
++                    "\"timebase\": \"%d/%d\",",
++                    link->time_base.num,
++                    link->time_base.den);
++
++                if(link->type == AVMEDIA_TYPE_VIDEO) {
++                    const AVPixFmtDescriptor *desc =
++                        av_pix_fmt_desc_get(link->format);
++                    av_bprintf(buf,
++                        "\"type\":\"video\",\"format\":\"%s\",\"width\":%d,\"height\":%d",
++                        desc->name,
++                        link->w,
++                        link->h);
++                } else if(link->type == AVMEDIA_TYPE_AUDIO) {
++                    char layout[255];
++                    av_channel_layout_describe(&link->ch_layout, layout, sizeof(layout));
++                    av_bprintf(buf,
++                        "\"type\":\"audio\",\"format\":\"%s\",\"sampling_hz\":%d,\"layout\":\"%s\"",
++                        av_get_sample_fmt_name(link->format),
++                        link->sample_rate,
++                        layout);
++                }
++
++                if(i == (graph->nb_filters - 1)) {
++                    av_bprintf(buf, "}");
++                } else {
++                    av_bprintf(buf, "},");
++                }
++            }
++        }
++    }
++
++    av_bprintf(buf, "]");
++}
++
++/**
++ * Print all outputs in JSON format
++ */
++static void print_json_outputs()
++{
++    static int ost_all_initialized = 0;
++    int i, j, k;
++    int nb_initialized = 0;
++    AVBPrint buf;
++
++    if(print_jsonstats != 1) {
++        return;
++    }
++
++    if(ost_all_initialized == 1) {
++        return;
++    }
++
++    // count how many outputs are initialized
++    for(i = 0; i < nb_output_streams; i++) {
++        OutputStream *ost = output_streams[i];
++        if(ost->initialized) {
++            nb_initialized++;
++        }
++    }
++
++    // only when all outputs are initialized, dump the outputs
++    if(nb_initialized == nb_output_streams) {
++        ost_all_initialized = 1;
++    }
++
++    if(ost_all_initialized != 1) {
++        return;
++    }
++
++    av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
++
++    av_bprintf(&buf, "ffmpeg.outputs:[");
++    for(i = 0; i < nb_output_streams; i++) {
++        OutputStream *ost = output_streams[i];
++        OutputFile *f = output_files[ost->file_index];
++        AVFormatContext *ctx = f->ctx;
++        AVStream *st = ost->st;
++        AVDictionaryEntry *lang =
++            av_dict_get(st->metadata, "language", NULL, 0);
++        AVCodecContext *enc = ost->enc_ctx;
++        char *url = NULL;
++
++        if(av_escape(&url,
++               ctx->url,
++               "\\\"",
++               AV_ESCAPE_MODE_BACKSLASH,
++               AV_UTF8_FLAG_ACCEPT_ALL) < 0) {
++            url = av_strdup("-");
++        }
++
++        av_bprintf(&buf, "{");
++        av_bprintf(&buf,
++            "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,",
++            url,
++            ctx->oformat->name,
++            ost->file_index,
++            ost->index);
++        av_bprintf(&buf,
++            "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%" PRId64
++            ",",
++            av_get_media_type_string(enc->codec_type),
++            avcodec_get_name(enc->codec_id),
++            ost->stream_copy ? "copy"
++                             : (enc->codec ? enc->codec->name : "unknown"),
++            enc->bit_rate / 1000);
++        av_bprintf(&buf,
++            "\"duration_sec\":%f,\"language\":\"%s\"",
++            0.0,
++            lang != NULL ? lang->value : "und");
++
++        av_free(url);
++
++        if(enc->codec_type == AVMEDIA_TYPE_VIDEO) {
++            float fps = 0;
++            if(st->avg_frame_rate.den && st->avg_frame_rate.num) {
++                fps = av_q2d(st->avg_frame_rate);
++            }
++
++            av_bprintf(&buf,
++                ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d",
++                fps,
++                st->codecpar->format == AV_PIX_FMT_NONE
++                    ? "none"
++                    : av_get_pix_fmt_name(st->codecpar->format),
++                st->codecpar->width,
++                st->codecpar->height);
++        } else if(enc->codec_type == AVMEDIA_TYPE_AUDIO) {
++            char layout[128];
++            av_channel_layout_describe(&enc->ch_layout, layout, sizeof(layout));
++
++            av_bprintf(&buf,
++                ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
++                enc->sample_rate,
++                layout,
++                enc->ch_layout.nb_channels);
++        }
++
++        if(i == (nb_output_streams - 1)) {
++            av_bprintf(&buf, "}");
++        } else {
++            av_bprintf(&buf, "},");
++        }
++    }
++
++    av_bprintf(&buf, "]");
++
++    av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++
++    av_bprint_clear(&buf);
++
++    av_bprintf(&buf, "ffmpeg.mapping:{");
++    av_bprintf(&buf, "\"graphs\":[");
++
++    for(i = 0; i < nb_filtergraphs; i++) {
++        av_bprintf(&buf, "{\"index\":%d,\"graph\":", i);
++        print_json_graph(&buf, filtergraphs[i]->graph);
++
++        if(i == (nb_filtergraphs - 1)) {
++            av_bprintf(&buf, "}");
++        } else {
++            av_bprintf(&buf, "},");
++        }
++    }
++
++    av_bprintf(&buf, "],");
++
++    // The following is inspired by tools/graph2dot.c
++
++    av_bprintf(&buf, "\"mapping\":[");
++
++    for(i = 0; i < nb_input_streams; i++) {
++        InputStream *ist = input_streams[i];
++
++        for(j = 0; j < ist->nb_filters; j++) {
++            if(ist->filters[j]->graph) {
++                char *name = NULL;
++                for(k = 0; k < ist->filters[j]->graph->nb_inputs; k++) {
++                    if(ist->filters[j]->graph->inputs[k]->ist == ist) {
++                        name = ist->filters[j]->graph->inputs[k]->filter->name;
++                        break;
++                    }
++                }
++
++                av_bprintf(&buf,
++                    "{\"input\":{\"index\":%d,\"stream\":%d},\"graph\":{\"index\":%d,\"name\":\"%s\"},\"output\":null},",
++                    ist->file_index,
++                    ist->st->index,
++                    ist->filters[j]->graph->index,
++                    name);
++            }
++        }
++    }
++
++    for(i = 0; i < nb_output_streams; i++) {
++        OutputStream *ost = output_streams[i];
++
++        if(ost->attachment_filename) {
++            av_bprintf(&buf,
++                "{\"input\":null,\"file\":\"%s\",\"output\":{\"index\":%d,\"stream\":%d}},",
++                ost->attachment_filename,
++                ost->file_index,
++                ost->index);
++            goto next_output;
++        }
++
++        if(ost->filter && ost->filter->graph) {
++            char *name = NULL;
++            for(j = 0; j < ost->filter->graph->nb_outputs; j++) {
++                if(ost->filter->graph->outputs[j]->ost == ost) {
++                    name = ost->filter->graph->outputs[j]->filter->name;
++                    break;
++                }
++            }
++            av_bprintf(&buf,
++                "{\"input\":null,\"graph\":{\"index\":%d,\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}}",
++                ost->filter->graph->index,
++                name,
++                ost->file_index,
++                ost->index);
++            goto next_output;
++        }
++
++        av_bprintf(&buf,
++            "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d}",
++            input_streams[ost->source_index]->file_index,
++            input_streams[ost->source_index]->st->index,
++            ost->file_index,
++            ost->index);
++        av_bprintf(&buf, ",\"copy\":%s", ost->stream_copy ? "true" : "false");
++
++        if(ost->sync_ist != input_streams[ost->source_index]) {
++            av_bprintf(&buf,
++                ",\"sync\":{\"index\":%d,\"stream\":%d}",
++                ost->sync_ist->file_index,
++                ost->sync_ist->st->index);
++        }
++
++        av_bprintf(&buf, "}");
++
++    next_output:
++        if(i != (nb_output_streams - 1)) {
++            av_bprintf(&buf, ",");
++        }
++    }
++
++    av_bprintf(&buf, "]}");
++
++    av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++
++    av_bprint_finalize(&buf, NULL);
++
++    return;
++}
++
+ /* open the muxer when all the streams are initialized */
+ int of_check_init(OutputFile *of)
+ {
+@@ -251,6 +543,8 @@ int of_check_init(OutputFile *of)
+     av_dump_format(of->ctx, of->index, of->ctx->url, 1);
+     nb_output_dumped++;
+ 
++    print_json_outputs();
++
+     if (sdp_filename || want_sdp) {
+         ret = print_sdp();
+         if (ret < 0) {
 diff --git a/fftools/ffmpeg_opt.c b/fftools/ffmpeg_opt.c
-index 9c820ab..8471dc9 100644
+index 6e18a4a2..94064947 100644
 --- a/fftools/ffmpeg_opt.c
 +++ b/fftools/ffmpeg_opt.c
-@@ -43,6 +43,7 @@
+@@ -52,6 +52,7 @@
  #include "libavutil/parseutils.h"
  #include "libavutil/pixdesc.h"
  #include "libavutil/pixfmt.h"
@@ -337,20 +593,24 @@ index 9c820ab..8471dc9 100644
  
  #define DEFAULT_PASS_LOGFILENAME_PREFIX "ffmpeg2pass"
  
-@@ -160,6 +161,7 @@ int debug_ts          = 0;
+@@ -171,6 +172,7 @@ int debug_ts          = 0;
  int exit_on_error     = 0;
  int abort_on_flags    = 0;
  int print_stats       = -1;
-+int print_jsonstats   = -1;
++int print_jsonstats   = 1;
  int qp_hist           = 0;
  int stdin_interaction = 1;
  float max_error_rate  = 2.0/3;
-@@ -3433,6 +3435,69 @@ static int open_files(OptionGroupList *l, const char *inout,
+@@ -3547,6 +3549,108 @@ static int open_files(OptionGroupList *l, const char *inout,
      return 0;
  }
  
-+static void print_json_inputs() {
-+    if(print_jsonstats != 1 && print_stats != -1) {
++/**
++ * Print all inputs in JSON format
++ */
++static void print_json_inputs()
++{
++    if(print_jsonstats != 1) {
 +        return;
 +    }
 +
@@ -360,25 +620,53 @@ index 9c820ab..8471dc9 100644
 +    av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
 +
 +    av_bprintf(&buf, "ffmpeg.inputs:[");
-+    for (i = 0; i < nb_input_files; i++) {
++    for(i = 0; i < nb_input_files; i++) {
 +        InputFile *f = input_files[i];
 +        AVFormatContext *ctx = f->ctx;
 +
 +        float duration = 0;
-+        if (ctx->duration != AV_NOPTS_VALUE) {
-+            duration = (float)(ctx->duration + (ctx->duration <= INT64_MAX - 5000 ? 5000 : 0)) / (float)AV_TIME_BASE;
++        if(ctx->duration != AV_NOPTS_VALUE) {
++            duration = (float)(ctx->duration +
++                           (ctx->duration <= INT64_MAX - 5000 ? 5000 : 0)) /
++                (float)AV_TIME_BASE;
 +        }
 +
-+        for (j = 0; j < f->nb_streams; j++) {
++        for(j = 0; j < f->nb_streams; j++) {
 +            InputStream *ist = input_streams[f->ist_index + j];
 +            AVCodecContext *dec = ist->dec_ctx;
 +            AVStream *st = ist->st;
-+            AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
++            AVDictionaryEntry *lang =
++                av_dict_get(st->metadata, "language", NULL, 0);
++            char *url = NULL;
++
++            if(av_escape(&url,
++                   ctx->url,
++                   "\\\"",
++                   AV_ESCAPE_MODE_BACKSLASH,
++                   AV_UTF8_FLAG_ACCEPT_ALL) < 0) {
++                url = av_strdup("-");
++            }
 +
 +            av_bprintf(&buf, "{");
-+            av_bprintf(&buf, "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,", ctx->url, ctx->iformat->name, i, j);
-+            av_bprintf(&buf, "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%"PRId64",", media_type_string(dec->codec_type), avcodec_get_name(dec->codec_id), dec->codec ? dec->codec->name : "unknown", dec->bit_rate / 1000);
-+            av_bprintf(&buf, "\"duration_sec\":%f,\"language\":\"%s\"", duration, lang != NULL ? lang->value : "und");
++            av_bprintf(&buf,
++                "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,",
++                url,
++                ctx->iformat->name,
++                i,
++                j);
++            av_bprintf(&buf,
++                "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%" PRId64
++                ",",
++                av_get_media_type_string(dec->codec_type),
++                avcodec_get_name(dec->codec_id),
++                dec->codec ? dec->codec->name : "unknown",
++                dec->bit_rate / 1000);
++            av_bprintf(&buf,
++                "\"duration_sec\":%f,\"language\":\"%s\"",
++                duration,
++                lang != NULL ? lang->value : "und");
++
++            av_free(url);
 +
 +            if(dec->codec_type == AVMEDIA_TYPE_VIDEO) {
 +                float fps = 0;
@@ -386,45 +674,51 @@ index 9c820ab..8471dc9 100644
 +                    fps = av_q2d(st->avg_frame_rate);
 +                }
 +
-+                av_bprintf(&buf, ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d", fps, st->codecpar->format == AV_PIX_FMT_NONE ? "none" : av_get_pix_fmt_name(st->codecpar->format), st->codecpar->width, st->codecpar->height);
-+            }
-+            else if(dec->codec_type == AVMEDIA_TYPE_AUDIO) {
++                av_bprintf(&buf,
++                    ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d",
++                    fps,
++                    st->codecpar->format == AV_PIX_FMT_NONE
++                        ? "none"
++                        : av_get_pix_fmt_name(st->codecpar->format),
++                    st->codecpar->width,
++                    st->codecpar->height);
++            } else if(dec->codec_type == AVMEDIA_TYPE_AUDIO) {
 +                char layout[128];
 +
-+                av_get_channel_layout_string(layout, sizeof(layout), dec->channels, dec->channel_layout);
++                av_channel_layout_describe(&dec->ch_layout, layout, sizeof(layout));
 +
-+                av_bprintf(&buf, ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d", dec->sample_rate, layout, dec->channels);
++                av_bprintf(&buf,
++                    ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
++                    dec->sample_rate,
++                    layout,
++                    dec->ch_layout.nb_channels);
 +            }
 +
 +            if(i == (nb_input_files - 1) && j == (f->nb_streams - 1)) {
 +                av_bprintf(&buf, "}");
-+            }
-+            else {
++            } else {
 +                av_bprintf(&buf, "},");
 +            }
-+        } 
++        }
 +    }
 +
 +    av_bprintf(&buf, "]");
 +
-+    fprintf(stderr, "%s\n", buf.str);
-+
-+    return;
++    av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
 +}
 +
  int ffmpeg_parse_options(int argc, char **argv)
  {
      OptionParseContext octx;
-@@ -3466,6 +3531,8 @@ int ffmpeg_parse_options(int argc, char **argv)
+@@ -3580,6 +3684,7 @@ int ffmpeg_parse_options(int argc, char **argv)
          goto fail;
      }
  
 +    print_json_inputs();
-+
+     apply_sync_offsets();
+ 
      /* create the complex filtergraphs */
-     ret = init_complex_filters();
-     if (ret < 0) {
-@@ -3674,6 +3741,8 @@ const OptionDef options[] = {
+@@ -3806,6 +3911,8 @@ const OptionDef options[] = {
          "enable automatic conversion filters globally" },
      { "stats",          OPT_BOOL,                                    { &print_stats },
          "print progress report during encoding", },
@@ -434,7 +728,7 @@ index 9c820ab..8471dc9 100644
          "set the period at which ffmpeg updates stats and -progress output", "time" },
      { "attach",         HAS_ARG | OPT_PERFILE | OPT_EXPERT |
 
-base-commit: 71650a0ab9193298b29c86db433f43b2feb62b93
+base-commit: 2bca71f4986725d7cf0d441e2f82a790d0a0c717
 -- 
-2.32.0 (Apple Git-132)
+2.32.1 (Apple Git-133)
 

@@ -58,7 +58,7 @@ jobs:
           context: .
           file: ./Dockerfile.alpine.rpi
           build-args: |
-            ALPINE_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
+            BUILD_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
             FREETYPE_VERSION=${{ env.FREETYPE_VERSION }}
             XML2_VERSION=${{ env.XML2_VERSION }}
             SRT_VERSION=${{ env.SRT_VERSION }}
@@ -70,6 +70,7 @@ jobs:
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
             RPI_VERSION=${{ env.RPI_VERSION }}
+            ALSA_VERSION=${{ env.ALSA_VERSION }}
           platforms: linux/arm64, linux/arm/v7
           push: true
           tags: |

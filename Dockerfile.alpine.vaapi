@@ -1,6 +1,6 @@
-ARG ALPINE_IMAGE=alpine:3.15
+ARG BUILD_IMAGE=alpine:3.15
 
-FROM $ALPINE_IMAGE as builder
+FROM $BUILD_IMAGE as builder
 
 ARG LIBAV_VERSION=2.14.0-r0
 ARG LIBVDPAU_VERSION=1.5-r0
@@ -135,10 +135,11 @@ RUN mkdir -p /ffmpeg/lib && \
 	/usr/lib/libbrotlicommon.so.1 \
 	/usr/lib/libbz2.so.1 \
 	/usr/lib/libpng16.so.16 \
-	/usr/lib/libsrt.so.1 \
+	/usr/lib/libsrt.so.1.4 \
 	/usr/lib/libx264.so.163 \
 	/usr/lib/libx265.so.199 \
-	/usr/lib/libvpx.so.6 \
+  /usr/lib/libnuma.so.1 \
+	/usr/lib/libvpx.so.7 \
 	/usr/lib/libmp3lame.so.0 \
 	/usr/lib/libopus.so.0 \
 	/usr/lib/libvorbis.so.0 \
@@ -164,7 +165,7 @@ RUN mkdir -p /ffmpeg/lib && \
 	/usr/lib/libva-x11.so.2 \
 	/ffmpeg/lib
 
-FROM $ALPINE_IMAGE as final
+FROM $BUILD_IMAGE as final
 
 COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder /ffmpeg/lib/* /usr/lib/
