@@ -66,5 +66,6 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
+            datarhei/base:${{ env.OS_NAME }}-ffmpeg-latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new

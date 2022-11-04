@@ -29,10 +29,10 @@ _Additional informations can be found in the Dockerfiles._
 
 | Dockerimage                                        | OS           | Plattform                                | GPU                                         |
 | -------------------------------------------------- | ------------ | ---------------------------------------- | ------------------------------------------- |
-| docker.io/datarhei/base:alpine-ffmpeg-5.1.2        | Alpine 3.16  | linux/amd64, linux/arm64, linux/arm/v7   | -                                           |
-| docker.io/datarhei/base:alpine-ffmpeg-rpi-5.1.2    | Alpine 3.16  | Raspberry Pi (linux/arm/v7, linux/arm64) | MMAL/OMX/V4L2-M2M (32bit), V4L2-M2M (64bit) |
-| docker.io/datarhei/base:alpine-ffmpeg-vaapi-5.1.2  | Alpine 3.16  | linux/amd64                              | Intel VAAPI                                 |
-| docker.io/datarhei/base:ubuntu-ffmpeg-cuda-5.1.2   | Ubuntu 20.03 | linux/amd64                              | Nvidia Cuda                                 |
+| docker.io/datarhei/base:alpine-ffmpeg-latest       | Alpine 3.16  | linux/amd64, linux/arm64, linux/arm/v7   | -                                           |
+| docker.io/datarhei/base:alpine-ffmpeg-rpi-latest   | Alpine 3.16  | Raspberry Pi (linux/arm/v7, linux/arm64) | MMAL/OMX/V4L2-M2M (32bit), V4L2-M2M (64bit) |
+| docker.io/datarhei/base:alpine-ffmpeg-vaapi-latest | Alpine 3.16  | linux/amd64                              | Intel VAAPI                                 |
+| docker.io/datarhei/base:ubuntu-ffmpeg-cuda-latest  | Ubuntu 20.04 | linux/amd64                              | Nvidia Cuda                                 |
 
 More tags: https://hub.docker.com/repository/docker/datarhei/base/general
 
