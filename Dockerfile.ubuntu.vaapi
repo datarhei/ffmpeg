@@ -1,0 +1,234 @@
+ARG BUILD_IMAGE=ubuntu:20.04
+ARG DEPLOY_IMAGE=ubuntu:20.04
+
+FROM $BUILD_IMAGE as builder
+
+ARG FREETYPE_VERSION=2.10.4
+ENV XML2_VERSION=2.9.14
+ARG SRT_VERSION=1.4.2
+ARG X264_VERSION=stable
+ARG X265_VERSION=3.4
+ENV VPX_VERSION=1.11.0
+ARG LAME_VERSION=3.100
+ARG OPUS_VERSION=1.3.1
+ENV OGG_VERSION=1.3.5
+ARG VORBIS_VERSION=1.3.7
+ARG FFMPEG_VERSION=4.4.2
+
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+ENV SRC=/usr/local
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && \
+  apt-get install -y \
+  pkg-config \
+  curl \
+  git \
+  nasm \
+  openssl \
+  libssl-dev \
+  cmake \
+  yasm \
+  build-essential \
+  libtool \
+  autoconf \
+  libv4l-dev \
+  libva-drm2 \
+  libva2 \
+  i965-va-driver
+
+# install x264
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://code.videolan.org/videolan/x264/-/archive/stable/x264-${X264_VERSION}.tar.gz && \
+  tar xfvz x264-${X264_VERSION}.tar.gz && \
+  rm x264-${X264_VERSION}.tar.gz && \
+  cd x264-${X264_VERSION}* && \
+  ./configure \
+  --SRC="${SRC}" \
+  --bindir="${SRC}/bin" \
+  --enable-shared && \
+  make -j$(nproc) && \
+  make install
+
+# install x265
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://github.com/videolan/x265/archive/refs/tags/${X265_VERSION}.tar.gz && \
+  tar xfvz ${X265_VERSION}.tar.gz && \
+  rm ${X265_VERSION}.tar.gz && \
+  cd x265-${X265_VERSION}/build/linux \
+  sed -i "/-DEXTRA_LIB/ s/$/ -DCMAKE_INSTALL_SRC=\${SRC}/" multilib.sh && \
+  sed -i "/^cmake/ s/$/ -DENABLE_CLI=OFF/" multilib.sh && \
+  ./multilib.sh && \
+  make -C 8bit install && \
+  rm -rf ${DIR}
+
+# install opus
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz && \
+  tar xfvz opus-${OPUS_VERSION}.tar.gz && \
+  rm opus-${OPUS_VERSION}.tar.gz && \
+  cd opus-${OPUS_VERSION} && \
+  autoreconf -fiv && \
+  ./configure --prefix="${SRC}" \
+  --enable-shared && \
+  make && \
+  make install
+
+# install ogg
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.gz && \
+  tar xfvz libogg-${OGG_VERSION}.tar.gz && \
+  rm libogg-${OGG_VERSION}.tar.gz && \
+  cd libogg-${OGG_VERSION} && \
+  ./configure --prefix="${SRC}" \
+  --enable-shared  && \
+  make && \
+  make install
+
+# install vorbis
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk http://downloads.xiph.org/releases/vorbis/libvorbis-${VORBIS_VERSION}.tar.gz && \
+  tar xfvz libvorbis-${VORBIS_VERSION}.tar.gz && \
+  rm libvorbis-${VORBIS_VERSION}.tar.gz && \
+  cd libvorbis-${VORBIS_VERSION} && \
+  ./configure --prefix="${SRC}" --with-ogg="${SRC}" \
+  --enable-shared && \
+  make && \
+  make install
+
+# install libmp3lame
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://downloads.sourceforge.net/project/lame/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz && \
+  tar -xvz -f lame-${LAME_VERSION}.tar.gz && \
+  rm lame-${LAME_VERSION}.tar.gz && \
+  cd lame-${LAME_VERSION} && \
+  ./configure \
+  --prefix="${SRC}" \
+  --bindir="${SRC}/bin" \
+  --disable-static \
+  --enable-nasm && \
+  make -j$(nproc) && \
+  make install
+
+# install vpx
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://github.com/webmproject/libvpx/archive/refs/tags/v${VPX_VERSION}.tar.gz && \
+  tar xfvz v${VPX_VERSION}.tar.gz && \
+  rm v${VPX_VERSION}.tar.gz && \
+  cd libvpx-${VPX_VERSION} && \
+  ./configure --prefix="${SRC}" \
+  --enable-vp8 \
+  --enable-vp9 \
+  --enable-vp9-highbitdepth \
+  --enable-pic \
+  --enable-shared \
+  --disable-debug \
+  --disable-examples \
+  --disable-docs \
+  --disable-install-bins && \
+  make && \
+  make install
+
+# install freetype
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz && \
+  tar xfvz freetype-${FREETYPE_VERSION}.tar.gz && \
+  rm freetype-${FREETYPE_VERSION}.tar.gz && \
+  cd freetype-${FREETYPE_VERSION} && \
+  ./configure --prefix="${SRC}" \
+  --disable-static \
+  --enable-shared && \
+  make && \
+  make install
+
+# install srt
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://github.com/Haivision/srt/archive/refs/tags/v${SRT_VERSION}.tar.gz && \
+  tar xfvz v${SRT_VERSION}.tar.gz && \
+  rm v${SRT_VERSION}.tar.gz && \
+  cd srt-${SRT_VERSION} && \
+  cmake \
+  -G "Unix Makefiles" \
+  -DCMAKE_INSTALL_BINDIR="$SRC/bin" \
+  -DCMAKE_INSTALL_INCLUDEDIR="$SRC/include" \
+  -DCMAKE_INSTALL_LIBDIR="$SRC/lib" \
+  -DCMAKE_INSTALL_SRC="$SRC" && \
+  make && \
+  make install
+
+# install libxml2
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://github.com/GNOME/libxml2/archive/refs/tags/v${XML2_VERSION}.tar.gz && \
+  tar xfvz v${XML2_VERSION}.tar.gz && \
+  rm v${XML2_VERSION}.tar.gz && \
+  cd libxml2-${XML2_VERSION} && \
+  ./autogen.sh --prefix="${SRC}" \
+  --with-ftp=no \
+  --with-http=no \
+  --with-python=no && \
+  make && \
+  make install
+
+# install and patch ffmpeg
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
+  tar -xvz -f ffmpeg-${FFMPEG_VERSION}.tar.gz && \
+  rm ffmpeg-${FFMPEG_VERSION}.tar.gz
+
+COPY ./contrib /contrib
+
+RUN apt-get install -y libva-dev
+
+RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
+  patch -p1 < /contrib/ffmpeg-jsonstats.patch && \
+  patch -p1 < /contrib/ffmpeg-hlsbitrate.patch && \
+  ./configure \
+  --extra-version=datahrei \
+  --prefix="${SRC}" \
+  --enable-nonfree \
+  --enable-gpl \
+  --enable-version3 \
+  --enable-postproc \
+  --enable-static \
+  --enable-openssl \
+  --enable-libxml2 \
+  --enable-vaapi \
+  --enable-libv4l2 \
+  --enable-libfreetype \
+  --enable-libsrt \
+  --enable-libx264 \
+  --enable-libx265 \
+  --enable-libvpx \
+  --enable-libmp3lame \
+  --enable-libopus \
+  --enable-libvorbis \
+  --disable-ffplay \
+  --disable-ffprobe \
+  --disable-debug \
+  --disable-doc && \
+  make -j$(nproc) && \
+  make install && \
+  hash -r
+
+FROM $DEPLOY_IMAGE
+
+COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=builder /usr/local/lib /usr/local/lib
+
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/ffmpeg.conf && \
+  ldconfig && \
+  apt-get update && \
+  apt-get install -y \
+  v4l-utils \
+  fbset \
+  libva-drm2 \
+  libva2 \
+  i965-va-driver && \
+  ffmpeg -buildconf
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,video,utility
+
+WORKDIR /tmp
+ENTRYPOINT ["/usr/local/bin/ffmpeg"]
+CMD ["-version"]
