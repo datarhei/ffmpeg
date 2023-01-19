@@ -4,7 +4,7 @@ FFmpeg base image for [datarhei/core](https://github.com/datarhei/core).
 
 [![alpine](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_alpine.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_alpine.yaml)
 [![alpine-rpi](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_alpine-rpi.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_alpine-rpi.yaml)
-[![alpine-vvapi](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_alpine-vaapi.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_alpine-vaapi.yaml)
+[![base:ubuntu-ffmpeg-vvapi](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-vaapi.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-vaapi.yaml)
 [![ubuntu-cuda](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-cuda.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-cuda.yaml)
 
 Branch: 5.1
