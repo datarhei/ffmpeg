@@ -1,14 +1,14 @@
-From ae76cd00ce561f8a22179ffa56e8b1a04afdfae8 Mon Sep 17 00:00:00 2001
+From 130acc0de0e5f2a5898b61a5f5a38e6bffa2c8d0 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Tue, 25 Oct 2022 10:45:42 +0200
-Subject: [PATCH v23] JSON progress report (ffmpeg 5.1)
+Date: Thu, 19 Jan 2023 13:56:05 +0100
+Subject: [PATCH v24] JSON progress report (ffmpeg 5.1)
 
 ---
  fftools/ffmpeg.c     | 205 ++++++++++++++++++++++++++++--
  fftools/ffmpeg.h     |   1 +
- fftools/ffmpeg_mux.c | 294 +++++++++++++++++++++++++++++++++++++++++++
- fftools/ffmpeg_opt.c | 107 ++++++++++++++++
- 4 files changed, 597 insertions(+), 10 deletions(-)
+ fftools/ffmpeg_mux.c | 295 +++++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_opt.c | 110 ++++++++++++++++
+ 4 files changed, 601 insertions(+), 10 deletions(-)
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
 index e7384f05..f52ff4f1 100644
@@ -263,7 +263,7 @@ index 391a35cf..179f2d22 100644
  extern int qp_hist;
  extern int stdin_interaction;
 diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
-index a55fd18f..3a09ba08 100644
+index a55fd18f..ffe4436f 100644
 --- a/fftools/ffmpeg_mux.c
 +++ b/fftools/ffmpeg_mux.c
 @@ -26,6 +26,8 @@
@@ -275,7 +275,7 @@ index a55fd18f..3a09ba08 100644
  
  #include "libavcodec/packet.h"
  
-@@ -226,6 +228,296 @@ fail:
+@@ -226,6 +228,297 @@ fail:
      return ret;
  }
  
@@ -461,7 +461,7 @@ index a55fd18f..3a09ba08 100644
 +
 +    av_bprintf(&buf, "]");
 +
-+    av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    fprintf(stderr, "%s\n", buf.str);
 +
 +    av_bprint_clear(&buf);
 +
@@ -562,7 +562,8 @@ index a55fd18f..3a09ba08 100644
 +
 +    av_bprintf(&buf, "]}");
 +
-+    av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    fprintf(stderr, "%s\n", buf.str);
++    fflush(stderr);
 +
 +    av_bprint_finalize(&buf, NULL);
 +
@@ -572,7 +573,7 @@ index a55fd18f..3a09ba08 100644
  /* open the muxer when all the streams are initialized */
  int of_check_init(OutputFile *of)
  {
-@@ -251,6 +543,8 @@ int of_check_init(OutputFile *of)
+@@ -251,6 +544,8 @@ int of_check_init(OutputFile *of)
      av_dump_format(of->ctx, of->index, of->ctx->url, 1);
      nb_output_dumped++;
  
@@ -582,7 +583,7 @@ index a55fd18f..3a09ba08 100644
          ret = print_sdp();
          if (ret < 0) {
 diff --git a/fftools/ffmpeg_opt.c b/fftools/ffmpeg_opt.c
-index 6e18a4a2..94064947 100644
+index 6e18a4a2..572d5356 100644
 --- a/fftools/ffmpeg_opt.c
 +++ b/fftools/ffmpeg_opt.c
 @@ -52,6 +52,7 @@
@@ -601,7 +602,7 @@ index 6e18a4a2..94064947 100644
  int qp_hist           = 0;
  int stdin_interaction = 1;
  float max_error_rate  = 2.0/3;
-@@ -3547,6 +3549,108 @@ static int open_files(OptionGroupList *l, const char *inout,
+@@ -3547,6 +3549,111 @@ static int open_files(OptionGroupList *l, const char *inout,
      return 0;
  }
  
@@ -704,13 +705,16 @@ index 6e18a4a2..94064947 100644
 +
 +    av_bprintf(&buf, "]");
 +
-+    av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    fprintf(stderr, "%s\n", buf.str);
++    fflush(stderr);
++
++    av_bprint_finalize(&buf, NULL);
 +}
 +
  int ffmpeg_parse_options(int argc, char **argv)
  {
      OptionParseContext octx;
-@@ -3580,6 +3684,7 @@ int ffmpeg_parse_options(int argc, char **argv)
+@@ -3580,6 +3687,7 @@ int ffmpeg_parse_options(int argc, char **argv)
          goto fail;
      }
  
@@ -718,7 +722,7 @@ index 6e18a4a2..94064947 100644
      apply_sync_offsets();
  
      /* create the complex filtergraphs */
-@@ -3806,6 +3911,8 @@ const OptionDef options[] = {
+@@ -3806,6 +3914,8 @@ const OptionDef options[] = {
          "enable automatic conversion filters globally" },
      { "stats",          OPT_BOOL,                                    { &print_stats },
          "print progress report during encoding", },
