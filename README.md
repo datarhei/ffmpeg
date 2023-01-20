@@ -36,8 +36,8 @@ _Additional informations can be found in the Dockerfiles._
 | -------------------------------------------------- | ------------ | ---------------------------------------- | ------------------------------------------- |
 | docker.io/datarhei/base:alpine-ffmpeg-latest       | Alpine 3.16  | linux/amd64, linux/arm64, linux/arm/v7   | -                                           |
 | docker.io/datarhei/base:alpine-ffmpeg-rpi-latest   | Alpine 3.16  | Raspberry Pi (linux/arm/v7, linux/arm64) | MMAL/OMX/V4L2-M2M (32bit), V4L2-M2M (64bit) |
-| docker.io/datarhei/base:alpine-ffmpeg-vaapi-latest | Alpine 3.16  | linux/amd64                              | Intel VAAPI                                 |
 | docker.io/datarhei/base:ubuntu-ffmpeg-cuda-latest  | Ubuntu 20.04 | linux/amd64                              | Nvidia Cuda                                 |
+| docker.io/datarhei/base:ubuntu-ffmpeg-vaapi-latest | Ubuntu 20.04 | linux/amd64                              | Intel VAAPI                                 |
 
 More tags: https://hub.docker.com/repository/docker/datarhei/base/general
 
@@ -51,8 +51,8 @@ $ ./Build.sh {arg}
 Args:
  - default (alpine-ffmpeg-latest)
  - rpi (alpine-ffmpeg-rpi-latest)
- - vaapi (alpine-ffmpeg-vaapi-latest)
  - cuda (ubuntu-ffmpeg-cuda-latest)
+ - vaapi (ubuntu-ffmpeg-vaapi-latest)
 
 ## Known problems:
 

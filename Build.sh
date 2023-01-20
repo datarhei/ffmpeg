@@ -29,6 +29,7 @@ function build_default() {
     --platform linux/amd64 \
     -f Dockerfile.alpine \
     -t datarhei/base:$OS_NAME-ffmpeg-$OS_VERSION-$FFMPEG_VERSION .
+  docker tag datarhei/base:$OS_NAME-ffmpeg-$OS_VERSION-$FFMPEG_VERSION datarhei/base:$OS_NAME-ffmpeg-latest
 }
 
 function build_rpi() {
@@ -55,6 +56,7 @@ function build_rpi() {
     --platform linux/arm64 \
     -f Dockerfile.alpine.rpi \
     -t datarhei/base:$OS_NAME-ffmpeg-rpi-$OS_VERSION-$FFMPEG_VERSION .
+  docker tag datarhei/base:$OS_NAME-ffmpeg-rpi-$OS_VERSION-$FFMPEG_VERSION datarhei/base:$OS_NAME-ffmpeg-rpi-latest
 }
 
 function build_cuda() {
@@ -78,6 +80,7 @@ function build_cuda() {
     --platform linux/amd64 \
     -f Dockerfile.ubuntu.cuda \
     -t datarhei/base:$OS_NAME-ffmpeg-cuda-$OS_VERSION-$FFMPEG_VERSION-$CUDA_VERSION .
+  docker tag datarhei/base:$OS_NAME-ffmpeg-cuda-$OS_VERSION-$FFMPEG_VERSION-$CUDA_VERSION datarhei/base:$OS_NAME-ffmpeg-cuda-latest
 }
 
 function build_vaapi() {
@@ -108,6 +111,7 @@ function build_vaapi() {
     --platform linux/amd64 \
     -f Dockerfile.alpine.vaapi \
     -t datarhei/base:$OS_NAME-ffmpeg-vaapi-$OS_VERSION-$FFMPEG_VERSION .
+  docker tag datarhei/base:$OS_NAME-ffmpeg-vaapi-$OS_VERSION-$FFMPEG_VERSION datarhei/base:$OS_NAME-ffmpeg-vaapi-latest
 }
 
 main() {
