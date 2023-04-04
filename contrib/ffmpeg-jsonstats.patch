@@ -1,17 +1,17 @@
-From 130acc0de0e5f2a5898b61a5f5a38e6bffa2c8d0 Mon Sep 17 00:00:00 2001
+From 104bb78afd5e7ed82680187b3c12b2247a98878e Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Thu, 19 Jan 2023 13:56:05 +0100
-Subject: [PATCH v24] JSON progress report (ffmpeg 5.1)
+Date: Tue, 4 Apr 2023 15:16:15 +0200
+Subject: [PATCH v25] JSON progress report (ffmpeg 5.1)
 
 ---
- fftools/ffmpeg.c     | 205 ++++++++++++++++++++++++++++--
- fftools/ffmpeg.h     |   1 +
- fftools/ffmpeg_mux.c | 295 +++++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg.c     | 212 ++++++++++++++++++++++++++++--
+ fftools/ffmpeg.h     |   3 +
+ fftools/ffmpeg_mux.c | 299 +++++++++++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_opt.c | 110 ++++++++++++++++
- 4 files changed, 601 insertions(+), 10 deletions(-)
+ 4 files changed, 614 insertions(+), 10 deletions(-)
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index e7384f05..f52ff4f1 100644
+index e7384f05..49920308 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
 @@ -1504,12 +1504,11 @@ static void print_final_stats(int64_t total_size)
@@ -53,7 +53,7 @@ index e7384f05..f52ff4f1 100644
      }
  
      secs = FFABS(pts) / AV_TIME_BASE;
-@@ -1714,6 +1709,196 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1714,6 +1709,199 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
          print_final_stats(total_size);
  }
  
@@ -112,12 +112,13 @@ index e7384f05..f52ff4f1 100644
 +            av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", i, j);
 +
 +            av_bprintf(&buf,
-+                "\"frame\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
++                "\"frame\":%" PRIu64 ",\"keyframe\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
 +                ist->frames_decoded == 0 ? ist->nb_packets
 +                                         : ist->frames_decoded,
++                ist->nb_keyframes,
 +                ist->nb_packets);
 +
-+            av_bprintf(&buf, "\"size_kb\":%.0f", ist->data_size / 1024.0);
++            av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64, ist->data_size / 1024.0, ist->data_size);
 +
 +            if(i == (nb_input_files - 1) && j == (f->nb_streams - 1)) {
 +                av_bprintf(&buf, "}");
@@ -145,9 +146,10 @@ index e7384f05..f52ff4f1 100644
 +            &buf, "\"index\":%d,\"stream\":%d,", ost->file_index, ost->index);
 +
 +        av_bprintf(&buf,
-+            "\"frame\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
++            "\"frame\":%" PRIu64 ",\"keyframe\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
 +            ost->frames_encoded == 0 ? ost->packets_written
 +                                     : ost->frames_encoded,
++            ost->nb_keyframes,
 +            ost->packets_written);
 +
 +        if(enc->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -184,7 +186,8 @@ index e7384f05..f52ff4f1 100644
 +        stream_size = ost->data_size + ost->enc_ctx->extradata_size;
 +        total_size += stream_size;
 +
-+        av_bprintf(&buf, "\"size_kb\":%.0f", stream_size / 1024.0);
++        av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64 ",", stream_size / 1024.0, stream_size);
++        av_bprintf(&buf, "\"extradata_size_bytes\":%d", ost->enc_ctx->extradata_size);
 +
 +        if(i == (nb_output_streams - 1)) {
 +            av_bprintf(&buf, "}");
@@ -201,7 +204,7 @@ index e7384f05..f52ff4f1 100644
 +        first_packet_number,
 +        first_q);
 +
-+    av_bprintf(&buf, "\"size_kb\":%.0f,", total_size / 1024.0);
++    av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64 ",", total_size / 1024.0, total_size);
 +
 +    secs = FFABS(min_pts) / AV_TIME_BASE;
 +    us = FFABS(min_pts) % AV_TIME_BASE;
@@ -250,11 +253,38 @@ index e7384f05..f52ff4f1 100644
  static int ifilter_parameters_from_codecpar(InputFilter *ifilter, AVCodecParameters *par)
  {
      int ret;
+@@ -3988,6 +4176,10 @@ static int process_input(int file_index)
+     ist->data_size += pkt->size;
+     ist->nb_packets++;
+ 
++    if(pkt->flags & AV_PKT_FLAG_KEY) {
++        ist->nb_keyframes++;
++    }
++
+     if (ist->discard)
+         goto discard_packet;
+ 
 diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
-index 391a35cf..179f2d22 100644
+index 391a35cf..ef91198b 100644
 --- a/fftools/ffmpeg.h
 +++ b/fftools/ffmpeg.h
-@@ -636,6 +636,7 @@ extern int debug_ts;
+@@ -391,6 +391,7 @@ typedef struct InputStream {
+     uint64_t data_size;
+     /* number of packets successfully read for this stream */
+     uint64_t nb_packets;
++    uint64_t nb_keyframes;
+     // number of frames/samples retrieved from the decoder
+     uint64_t frames_decoded;
+     uint64_t samples_decoded;
+@@ -553,6 +554,7 @@ typedef struct OutputStream {
+     uint64_t data_size;
+     // number of packets send to the muxer
+     uint64_t packets_written;
++    uint64_t nb_keyframes;
+     // number of frames/samples sent to the encoder
+     uint64_t frames_encoded;
+     uint64_t samples_encoded;
+@@ -636,6 +638,7 @@ extern int debug_ts;
  extern int exit_on_error;
  extern int abort_on_flags;
  extern int print_stats;
@@ -263,7 +293,7 @@ index 391a35cf..179f2d22 100644
  extern int qp_hist;
  extern int stdin_interaction;
 diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
-index a55fd18f..ffe4436f 100644
+index a55fd18f..ae82baf3 100644
 --- a/fftools/ffmpeg_mux.c
 +++ b/fftools/ffmpeg_mux.c
 @@ -26,6 +26,8 @@
@@ -275,7 +305,18 @@ index a55fd18f..ffe4436f 100644
  
  #include "libavcodec/packet.h"
  
-@@ -226,6 +228,297 @@ fail:
+@@ -152,6 +154,10 @@ void of_write_packet(OutputFile *of, AVPacket *pkt, OutputStream *ost,
+     ost->data_size += pkt->size;
+     ost->packets_written++;
+ 
++    if(pkt->flags & AV_PKT_FLAG_KEY) {
++        ost->nb_keyframes++;
++    }
++
+     pkt->stream_index = ost->index;
+ 
+     if (debug_ts) {
+@@ -226,6 +232,297 @@ fail:
      return ret;
  }
  
@@ -573,7 +614,7 @@ index a55fd18f..ffe4436f 100644
  /* open the muxer when all the streams are initialized */
  int of_check_init(OutputFile *of)
  {
-@@ -251,6 +544,8 @@ int of_check_init(OutputFile *of)
+@@ -251,6 +548,8 @@ int of_check_init(OutputFile *of)
      av_dump_format(of->ctx, of->index, of->ctx->url, 1);
      nb_output_dumped++;
  
@@ -734,5 +775,5 @@ index 6e18a4a2..572d5356 100644
 
 base-commit: 2bca71f4986725d7cf0d441e2f82a790d0a0c717
 -- 
-2.32.1 (Apple Git-133)
+2.37.1 (Apple Git-137.1)
 
