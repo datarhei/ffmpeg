@@ -1,17 +1,17 @@
-From 104bb78afd5e7ed82680187b3c12b2247a98878e Mon Sep 17 00:00:00 2001
+From 614b3f1eb76a2fe40eda49232fee8e7a6418d4fd Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Tue, 4 Apr 2023 15:16:15 +0200
-Subject: [PATCH v25] JSON progress report (ffmpeg 5.1)
+Date: Thu, 13 Apr 2023 14:38:05 +0200
+Subject: [PATCH v26] JSON progress report (ffmpeg 5.1)
 
 ---
- fftools/ffmpeg.c     | 212 ++++++++++++++++++++++++++++--
- fftools/ffmpeg.h     |   3 +
+ fftools/ffmpeg.c     | 245 +++++++++++++++++++++++++++++++++--
+ fftools/ffmpeg.h     |   8 ++
  fftools/ffmpeg_mux.c | 299 +++++++++++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_opt.c | 110 ++++++++++++++++
- 4 files changed, 614 insertions(+), 10 deletions(-)
+ 4 files changed, 651 insertions(+), 11 deletions(-)
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index e7384f05..49920308 100644
+index e7384f05..1c15fd96 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
 @@ -1504,12 +1504,11 @@ static void print_final_stats(int64_t total_size)
@@ -53,7 +53,7 @@ index e7384f05..49920308 100644
      }
  
      secs = FFABS(pts) / AV_TIME_BASE;
-@@ -1714,6 +1709,199 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -1714,6 +1709,201 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
          print_final_stats(total_size);
  }
  
@@ -110,6 +110,8 @@ index e7384f05..49920308 100644
 +
 +            av_bprintf(&buf, "{");
 +            av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", i, j);
++
++            av_bprintf(&buf, "\"framerate\":{\"min\":%.3f,\"max\":%.3f,\"avg\":%.3f},", ist->min_framerate, ist->max_framerate, ist->avg_framerate);
 +
 +            av_bprintf(&buf,
 +                "\"frame\":%" PRIu64 ",\"keyframe\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
@@ -253,7 +255,17 @@ index e7384f05..49920308 100644
  static int ifilter_parameters_from_codecpar(InputFilter *ifilter, AVCodecParameters *par)
  {
      int ret;
-@@ -3988,6 +4176,10 @@ static int process_input(int file_index)
+@@ -2660,6 +2850,9 @@ static int init_input_stream(int ist_index, char *error, int error_len)
+     ist->next_pts = AV_NOPTS_VALUE;
+     ist->next_dts = AV_NOPTS_VALUE;
+ 
++    ist->min_framerate = 0.0;
++    ist->max_framerate = 0.0;
++
+     return 0;
+ }
+ 
+@@ -3988,6 +4181,10 @@ static int process_input(int file_index)
      ist->data_size += pkt->size;
      ist->nb_packets++;
  
@@ -264,11 +276,60 @@ index e7384f05..49920308 100644
      if (ist->discard)
          goto discard_packet;
  
+@@ -4153,9 +4350,35 @@ static int process_input(int file_index)
+         }
+     }
+ 
+-    if (pkt->dts != AV_NOPTS_VALUE)
++    if (pkt->dts != AV_NOPTS_VALUE) {
+         ifile->last_ts = av_rescale_q(pkt->dts, ist->st->time_base, AV_TIME_BASE_Q);
+ 
++        if(pkt->flags & AV_PKT_FLAG_KEY) {
++            int64_t ts = av_rescale_q(pkt->dts, ist->st->time_base, AV_TIME_BASE_Q);
++
++            // fps estimation
++            if(ts - ist->last_keyframe_dts != 0) {
++                double framerate = (ist->nb_packets - ist->last_keyframe_pktnb) / (double)(ts - ist->last_keyframe_dts) * (double)AV_TIME_BASE;
++
++                if(ist->min_framerate == 0.0 || framerate < ist->min_framerate) {
++                    ist->min_framerate = framerate;
++                }
++
++                if(ist->max_framerate == 0.0 || framerate > ist->max_framerate) {
++                    ist->max_framerate = framerate;
++                }
++
++                ist->sum_framerate += framerate;
++                ist->nsamples_framerate++;
++
++                ist->avg_framerate = ((ist->nsamples_framerate-1)*ist->avg_framerate + framerate) / (double)ist->nsamples_framerate;
++            }
++
++            ist->last_keyframe_dts = ts;
++            ist->last_keyframe_pktnb = ist->nb_packets;
++        }
++    }
++
+     if (debug_ts) {
+         av_log(NULL, AV_LOG_INFO, "demuxer+ffmpeg -> ist_index:%d type:%s pkt_pts:%s pkt_pts_time:%s pkt_dts:%s pkt_dts_time:%s duration:%s duration_time:%s off:%s off_time:%s\n",
+                ifile->ist_index + pkt->stream_index, av_get_media_type_string(ist->dec_ctx->codec_type),
 diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
-index 391a35cf..ef91198b 100644
+index 391a35cf..302c159f 100644
 --- a/fftools/ffmpeg.h
 +++ b/fftools/ffmpeg.h
-@@ -391,6 +391,7 @@ typedef struct InputStream {
+@@ -330,6 +330,11 @@ typedef struct InputStream {
+     int64_t       pts;       ///< current pts of the decoded frame  (in AV_TIME_BASE units)
+     int           wrap_correction_done;
+ 
++    int64_t last_keyframe_dts;
++    int64_t last_keyframe_pktnb;
++    int64_t nsamples_framerate;
++    double sum_framerate, min_framerate, max_framerate, avg_framerate;
++
+     int64_t filter_in_rescale_delta_last;
+ 
+     int64_t min_pts; /* pts with the smallest value in a current stream */
+@@ -391,6 +396,7 @@ typedef struct InputStream {
      uint64_t data_size;
      /* number of packets successfully read for this stream */
      uint64_t nb_packets;
@@ -276,7 +337,7 @@ index 391a35cf..ef91198b 100644
      // number of frames/samples retrieved from the decoder
      uint64_t frames_decoded;
      uint64_t samples_decoded;
-@@ -553,6 +554,7 @@ typedef struct OutputStream {
+@@ -553,6 +559,7 @@ typedef struct OutputStream {
      uint64_t data_size;
      // number of packets send to the muxer
      uint64_t packets_written;
@@ -284,7 +345,7 @@ index 391a35cf..ef91198b 100644
      // number of frames/samples sent to the encoder
      uint64_t frames_encoded;
      uint64_t samples_encoded;
-@@ -636,6 +638,7 @@ extern int debug_ts;
+@@ -636,6 +643,7 @@ extern int debug_ts;
  extern int exit_on_error;
  extern int abort_on_flags;
  extern int print_stats;
