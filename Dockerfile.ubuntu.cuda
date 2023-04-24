@@ -34,7 +34,8 @@ RUN apt-get update -y && \
   build-essential \
   libtool \
   autoconf \
-  libv4l-dev
+  libv4l-dev \
+  libasound2-dev
 
 # install x264
 RUN mkdir -p /dist && cd /dist && \
@@ -201,6 +202,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libnpp \
   --enable-libv4l2 \
   --enable-libfreetype \
+  --enable-alsa \
   --enable-libsrt \
   --enable-libx264 \
   --enable-libx265 \
@@ -226,7 +228,8 @@ RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/ffmpeg.conf && \
   apt-get update && \
   apt-get install -y \
   v4l-utils \
-  fbset && \
+  fbset \
+  libasound2-dev && \
   ffmpeg -buildconf
 
 ENV NVIDIA_VISIBLE_DEVICES all

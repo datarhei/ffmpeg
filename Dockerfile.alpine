@@ -12,6 +12,7 @@ ARG LAME_VERSION=3.100-r0
 ARG OPUS_VERSION=1.3.1-r1
 ARG VORBIS_VERSION=1.3.7-r0
 ARG FBDEV_VERSION=0.5.0-r3
+ARG ALSA_VERSION=1.2.5.1-r1
 ARG V4L_VERSION=1.22.1-r1
 ARG FFMPEG_VERSION=4.4.2
 
@@ -55,6 +56,7 @@ RUN apk add -U \
   lame-dev=${LAME_VERSION} \
   opus-dev=${OPUS_VERSION} \
   libvorbis-dev=${VORBIS_VERSION} \
+  alsa-lib-dev=${ALSA_VERSION} \
   v4l-utils-dev=${V4L_VERSION}
 
 # install and patch ffmpeg
@@ -82,6 +84,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libv4l2 \
   --enable-v4l2_m2m \
   --enable-libfreetype \
+  --enable-alsa \
   --enable-libsrt \
   --enable-libx264 \
   --enable-libx265 \
@@ -131,6 +134,7 @@ ARG V4L_VERSION=1.22.1-r1
 RUN apk add --no-cache \
   ca-certificates \
   tzdata \
+  alsa-lib \
   xf86-video-fbdev=${FBDEV_VERSION} \
   v4l-utils=${V4L_VERSION} && \
   ffmpeg -buildconf

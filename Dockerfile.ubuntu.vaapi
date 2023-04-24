@@ -35,7 +35,9 @@ RUN apt-get update -y && \
   libv4l-dev \
   libva-drm2 \
   libva2 \
-  i965-va-driver
+  libva-dev \
+  i965-va-driver \
+  libasound2-dev
 
 # install x264
 RUN mkdir -p /dist && cd /dist && \
@@ -177,8 +179,6 @@ RUN mkdir -p /dist && cd /dist && \
 
 COPY ./contrib /contrib
 
-RUN apt-get install -y libva-dev
-
 RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   patch -p1 < /contrib/ffmpeg-jsonstats.patch && \
   patch -p1 < /contrib/ffmpeg-hlsbitrate.patch && \
@@ -195,6 +195,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-vaapi \
   --enable-libv4l2 \
   --enable-libfreetype \
+  --enable-alsa \
   --enable-libsrt \
   --enable-libx264 \
   --enable-libx265 \
@@ -223,7 +224,8 @@ RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/ffmpeg.conf && \
   fbset \
   libva-drm2 \
   libva2 \
-  i965-va-driver && \
+  i965-va-driver \
+  libasound2-dev && \
   ffmpeg -buildconf
 
 ENV NVIDIA_VISIBLE_DEVICES all

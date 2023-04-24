@@ -25,6 +25,7 @@ function build_default() {
     --build-arg LAME_VERSION=$LAME_VERSION \
     --build-arg OPUS_VERSION=$OPUS_VERSION \
     --build-arg VORBIS_VERSION=$VORBIS_VERSION \
+    --build-arg ALSA_VERSION=$ALSA_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
     --platform linux/amd64 \
     -f Dockerfile.alpine \
@@ -84,8 +85,8 @@ function build_cuda() {
 }
 
 function build_vaapi() {
-  source_env ./Build.alpine.env
-  source_env ./Build.alpine.vaapi.env
+  source_env ./Build.ubuntu.env
+  source_env ./Build.ubuntu.vaapi.env
   docker buildx build \
     --load \
     --build-arg BUILD_IMAGE=$OS_NAME:$OS_VERSION \
@@ -99,17 +100,8 @@ function build_vaapi() {
     --build-arg OPUS_VERSION=$OPUS_VERSION \
     --build-arg VORBIS_VERSION=$VORBIS_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
-    --build-arg LIBAV_VERSION=$LIBAV_VERSION \
-    --build-arg LIBVDPAU_VERSION=$LIBVDPAU_VERSION \
-    --build-arg MESA_VA_GALLIUM_VERSION=$MESA_VA_GALLIUM_VERSION \
-    --build-arg MESA_VDPAU_GALLIUM_VERSION=$MESA_VDPAU_GALLIUM_VERSION \
-    --build-arg LIBVA_VDPAU_DRIVER_VERSION=$LIBVA_VDPAU_DRIVER_VERSION \
-    --build-arg INTEL_GMMLIB_VERSION=$INTEL_GMMLIB_VERSION \
-    --build-arg INTEL_MEDIA_DRIVER_VERSION=$INTEL_MEDIA_DRIVER_VERSION \
-    --build-arg INTEL_MEDIA_SDK_VERSION=$INTEL_MEDIA_SDK_VERSION \
-    --build-arg INTEL_VAAPI_DRIVER=$INTEL_VAAPI_DRIVER \
     --platform linux/amd64 \
-    -f Dockerfile.alpine.vaapi \
+    -f Dockerfile.ubuntu.vaapi \
     -t datarhei/base:$OS_NAME-ffmpeg-vaapi-$OS_VERSION-$FFMPEG_VERSION .
   docker tag datarhei/base:$OS_NAME-ffmpeg-vaapi-$OS_VERSION-$FFMPEG_VERSION datarhei/base:$OS_NAME-ffmpeg-vaapi-latest
 }
