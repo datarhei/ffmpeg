@@ -14,6 +14,7 @@ Branch: 5.1
 ```sh
 --enable-libv4l2
 --enable-libfreetype
+--enable-alsa
 --enable-libsrt
 --enable-libx264
 --enable-libx265

@@ -1,4 +1,4 @@
-name: 'base:ubuntu-ffmpeg-vvapi'
+name: 'base:ubuntu-ffmpeg-vaapi'
 
 on:
   workflow_dispatch:
