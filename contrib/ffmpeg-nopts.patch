@@ -1,0 +1,31 @@
+From 357b3d157b08ca5c7b91f605136bf140a4453fe7 Mon Sep 17 00:00:00 2001
+From: Ingo Oppermann <ingo@datarhei.com>
+Date: Tue, 16 May 2023 11:19:17 +0200
+Subject: [PATCH v1] Ignore packets with unset PTS on streamcopy
+
+---
+ fftools/ffmpeg.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
+index e7384f05..3385482b 100644
+--- a/fftools/ffmpeg.c
++++ b/fftools/ffmpeg.c
+@@ -1858,8 +1858,11 @@ static void do_streamcopy(InputStream *ist, OutputStream *ost, const AVPacket *p
+     if (av_packet_ref(opkt, pkt) < 0)
+         exit_program(1);
+ 
+-    if (pkt->pts != AV_NOPTS_VALUE)
++    if (pkt->pts != AV_NOPTS_VALUE) {
+         opkt->pts = av_rescale_q(pkt->pts, ist->st->time_base, ost->mux_timebase) - ost_tb_start_time;
++    } else {
++        return;
++    }
+ 
+     if (pkt->dts == AV_NOPTS_VALUE) {
+         opkt->dts = av_rescale_q(ist->dts, AV_TIME_BASE_Q, ost->mux_timebase);
+
+base-commit: 2bca71f4986725d7cf0d441e2f82a790d0a0c717
+-- 
+2.39.2 (Apple Git-143)
+
