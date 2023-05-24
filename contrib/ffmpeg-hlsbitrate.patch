@@ -1,14 +1,14 @@
-From df74cdced975a6f13fdc24e43e75a7f9b571c661 Mon Sep 17 00:00:00 2001
+From 194da7adf9477a49b30145ba342fcf6debd31af9 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Tue, 25 Oct 2022 10:43:45 +0200
-Subject: [PATCH v2] Calculate bandwidth estimate (ffmpeg 5.1)
+Date: Wed, 24 May 2023 12:16:52 +0200
+Subject: [PATCH v3] Calculate bandwidth estimate (ffmpeg 5.1)
 
 ---
- libavformat/hlsenc.c | 29 +++++++++++++++++++++++++++++
- 1 file changed, 29 insertions(+)
+ libavformat/hlsenc.c | 54 ++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 49 insertions(+), 5 deletions(-)
 
 diff --git a/libavformat/hlsenc.c b/libavformat/hlsenc.c
-index 6f49ae1a..da7c3f21 100644
+index 6f49ae1a..4d4805da 100644
 --- a/libavformat/hlsenc.c
 +++ b/libavformat/hlsenc.c
 @@ -124,6 +124,7 @@ typedef struct VariantStream {
@@ -28,12 +28,43 @@ index 6f49ae1a..da7c3f21 100644
      int64_t video_lastpos;
      int64_t video_keyframe_pos;
      int64_t video_keyframe_size;
-@@ -1482,6 +1485,16 @@ static int create_master_playlist(AVFormatContext *s,
-             bandwidth += get_stream_bit_rate(vid_st);
-         if (aud_st)
-             bandwidth += get_stream_bit_rate(aud_st);
+@@ -1372,7 +1375,7 @@ static int create_master_playlist(AVFormatContext *s,
+     AVStream *vid_st, *aud_st;
+     AVDictionary *options = NULL;
+     unsigned int i, j;
+-    int ret, bandwidth;
++    int ret, bandwidth, st_bandwidth, est_bandwidth;
+     const char *m3u8_rel_name = NULL;
+     const char *vtt_m3u8_rel_name = NULL;
+     const char *ccgroup;
+@@ -1478,10 +1481,35 @@ static int create_master_playlist(AVFormatContext *s,
+         }
+ 
+         bandwidth = 0;
+-        if (vid_st)
+-            bandwidth += get_stream_bit_rate(vid_st);
+-        if (aud_st)
+-            bandwidth += get_stream_bit_rate(aud_st);
++        est_bandwidth = 0;
 +
-+        if (bandwidth == 0) {
++        if (vid_st) {
++            st_bandwidth = get_stream_bit_rate(vid_st);
++            if (st_bandwidth == 0) {
++                est_bandwidth = 1;
++            } else {
++                bandwidth += st_bandwidth;
++            }
++        }
++        if (aud_st) {
++            st_bandwidth = get_stream_bit_rate(aud_st);
++            if (st_bandwidth == 0) {
++                est_bandwidth = 1;
++            } else {
++                bandwidth += st_bandwidth;
++            }
++        }
++
++        if (est_bandwidth != 0) {
 +            // Estimate bandwidth
 +            bandwidth = (int)round((double)vs->bytes_written / (av_q2d(AV_TIME_BASE_Q) * (vs->scaled_cur_pts - vs->scaled_start_pts)) * 8);
 +
@@ -42,10 +73,11 @@ index 6f49ae1a..da7c3f21 100644
 +            vs->scaled_start_pts = vs->scaled_cur_pts;
 +        }
 +
++        // Add 10% of the bandwidth to itself
          bandwidth += bandwidth / 10;
  
          ccgroup = NULL;
-@@ -2443,6 +2456,19 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -2443,6 +2471,19 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
          return AVERROR(ENOMEM);
      }
  
@@ -65,7 +97,7 @@ index 6f49ae1a..da7c3f21 100644
      end_pts = hls->recording_time * vs->number;
  
      if (vs->sequence - vs->nb_entries > hls->start_sequence && hls->init_time > 0) {
-@@ -2663,6 +2689,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -2663,6 +2704,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
      }
  
      vs->packets_written++;
@@ -73,7 +105,7 @@ index 6f49ae1a..da7c3f21 100644
      if (oc->pb) {
          ret = ff_write_chained(oc, stream_index, pkt, s, 0);
          vs->video_keyframe_size += pkt->size;
-@@ -2956,6 +2983,8 @@ static int hls_init(AVFormatContext *s)
+@@ -2956,6 +2998,8 @@ static int hls_init(AVFormatContext *s)
          vs->sequence  = hls->start_sequence;
          vs->start_pts = AV_NOPTS_VALUE;
          vs->end_pts   = AV_NOPTS_VALUE;
@@ -85,5 +117,5 @@ index 6f49ae1a..da7c3f21 100644
 
 base-commit: 2bca71f4986725d7cf0d441e2f82a790d0a0c717
 -- 
-2.32.1 (Apple Git-133)
+2.39.2 (Apple Git-143)
 
