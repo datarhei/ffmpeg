@@ -1,4 +1,4 @@
-ARG BUILD_IMAGE=alpine:3.15
+ARG BUILD_IMAGE=alpine:3
 
 FROM $BUILD_IMAGE as builder
 
