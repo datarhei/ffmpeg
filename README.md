@@ -7,7 +7,7 @@ FFmpeg base image for [datarhei/core](https://github.com/datarhei/core).
 [![base:ubuntu-ffmpeg-vvapi](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-vaapi.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-vaapi.yaml)
 [![ubuntu-cuda](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-cuda.yaml/badge.svg)](https://github.com/datarhei/ffmpeg/actions/workflows/build_base_ubuntu-cuda.yaml)
 
-Branch: 5.1
+Branch: 6.1
 
 ## Config:
 
@@ -46,14 +46,15 @@ More tags: https://hub.docker.com/repository/docker/datarhei/base/general
 
 ```sh
 $ git clone github.com/datarhei/ffmpeg
-$ ./Build.sh {arg} 
+$ ./Build.sh {arg}
 ```
 
 Args:
- - default (alpine-ffmpeg-latest)
- - rpi (alpine-ffmpeg-rpi-latest)
- - cuda (ubuntu-ffmpeg-cuda-latest)
- - vaapi (ubuntu-ffmpeg-vaapi-latest)
+
+- default (alpine-ffmpeg-latest)
+- rpi (alpine-ffmpeg-rpi-latest)
+- cuda (ubuntu-ffmpeg-cuda-latest)
+- vaapi (ubuntu-ffmpeg-vaapi-latest)
 
 ## Known problems:
 

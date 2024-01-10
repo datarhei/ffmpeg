@@ -1,0 +1,224 @@
+From c1f0d95484d414a41d149ae1435794b287a4292f Mon Sep 17 00:00:00 2001
+From: Ingo Oppermann <ingo@datarhei.com>
+Date: Wed, 10 Jan 2024 16:08:49 +0100
+Subject: [PATCH v6] HLS extensions (ffmpeg 6.1)
+
+---
+ README.HLS.md        | 48 ++++++++++++++++++++++++
+ libavformat/hlsenc.c | 87 +++++++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 130 insertions(+), 5 deletions(-)
+ create mode 100644 README.HLS.md
+
+diff --git a/README.HLS.md b/README.HLS.md
+new file mode 100644
+index 00000000..5462338b
+--- /dev/null
++++ b/README.HLS.md
+@@ -0,0 +1,48 @@
++# HLS Muxer Extensions
++
++Various extensions to the HLS muxer `hlsenc.c`.
++
++## Bitrate Estimation
++
++If streamcopy is used, the muxer doesn't get always information about the bitrate. However, this is required if you want
++to write a manifest with multiple bitrate substreams. This patch adds an estimator for the bitrate (based on data written
++between two keyframes) which kicks in if there's no bitrate provided, e.g.
++
++```
++ffmpeg \
++  -re -i https://demo.datarhei.com/memfs/1f33d538-d714-4c7e-9559-46ddb8118f03.m3u8 \
++  -c:v:0 copy -bsf:v:0 h264_metadata \
++  -map 0:v:0 \
++  -f hls \
++  -start_number 0 -hls_time 2 -hls_list_size 6 -hls_delete_threshold 12 \
++  -hls_flags append_list+delete_segments+program_date_time+independent_segments \
++  -hls_segment_type mpegts -hls_segment_filename 'http://localhost:8080/memfs/%v_%04d.ts' \
++  -master_pl_name main.m3u8 -master_pl_publish_rate 5 -var_stream_map v:0 -y \
++  -method PUT -http_persistent 1 -ignore_io_errors 1 'http://localhost:8080/memfs/%v.m3u8'
++```
++
++Without the patch, a message like `Bandwidth info not available, set audio and video bitrates` will appear.
++
++## Variant Stream Map
++
++From the outside of the muxer, everything is one output even if the muxer creates several variants. This patch prints a
++map of the variants to `stderr` as JSON on one line, similar to this one:
++
++```
++hls.streammap:{"address":"http://127.0.0.1:8080/memfs/live/%v.m3u8","variants":[{"variant":0,"address":"http://127.0.0.1:8080/memfs/live/0.m3u8","streams":[0,2]},{"variant":1,"address":"http://127.0.0.1:8080/memfs/live/1.m3u8","streams":[1,3]}]}
++```
++
++The prefix is `hls.streammap`.
++
++It lists all variant substreams and which output streams are used. The `streams` array lists the indexs of the output streams from the stream mapping. For the
++above HLS stream map, this is the FFmpeg stream map:
++
++```
++Stream mapping:
++  Stream #0:0 -> #0:0 (copy)
++  Stream #1:0 -> #0:1 (copy)
++  Stream #2:0 -> #0:2 (pcm_u8 (native) -> aac (native))
++  Stream #2:0 -> #0:3 (pcm_u8 (native) -> aac (native))
++```
++
++In the command, the `-var_stream_map` option had the value `v:0,a:0 v:1,a:1`.
+diff --git a/libavformat/hlsenc.c b/libavformat/hlsenc.c
+index 4ef84c05..652b2bef 100644
+--- a/libavformat/hlsenc.c
++++ b/libavformat/hlsenc.c
+@@ -123,6 +123,7 @@ typedef struct VariantStream {
+     AVIOContext *out;
+     AVIOContext *out_single_file;
+     int packets_written;
++    uint64_t bytes_written;
+     int init_range_length;
+     uint8_t *temp_buffer;
+     uint8_t *init_buffer;
+@@ -137,6 +138,8 @@ typedef struct VariantStream {
+     double dpp;           // duration per packet
+     int64_t start_pts;
+     int64_t end_pts;
++    int64_t scaled_start_pts;
++    int64_t scaled_cur_pts;
+     int64_t video_lastpos;
+     int64_t video_keyframe_pos;
+     int64_t video_keyframe_size;
+@@ -1376,7 +1379,7 @@ static int create_master_playlist(AVFormatContext *s,
+     AVStream *vid_st, *aud_st;
+     AVDictionary *options = NULL;
+     unsigned int i, j;
+-    int ret, bandwidth;
++    int ret, bandwidth, st_bandwidth, est_bandwidth;
+     const char *m3u8_rel_name = NULL;
+     const char *vtt_m3u8_rel_name = NULL;
+     const char *ccgroup;
+@@ -1482,10 +1485,35 @@ static int create_master_playlist(AVFormatContext *s,
+         }
+ 
+         bandwidth = 0;
+-        if (vid_st)
+-            bandwidth += get_stream_bit_rate(vid_st);
+-        if (aud_st)
+-            bandwidth += get_stream_bit_rate(aud_st);
++        est_bandwidth = 0;
++
++        if (vid_st) {
++            st_bandwidth = get_stream_bit_rate(vid_st);
++            if (st_bandwidth == 0) {
++                est_bandwidth = 1;
++            } else {
++                bandwidth += st_bandwidth;
++            }
++        }
++        if (aud_st) {
++            st_bandwidth = get_stream_bit_rate(aud_st);
++            if (st_bandwidth == 0) {
++                est_bandwidth = 1;
++            } else {
++                bandwidth += st_bandwidth;
++            }
++        }
++
++        if (est_bandwidth != 0) {
++            // Estimate bandwidth
++            bandwidth = (int)round((double)vs->bytes_written / (av_q2d(AV_TIME_BASE_Q) * (vs->scaled_cur_pts - vs->scaled_start_pts)) * 8);
++
++            // Reset counters
++            vs->bytes_written = 0;
++            vs->scaled_start_pts = vs->scaled_cur_pts;
++        }
++
++        // Add 10% of the bandwidth to itself
+         bandwidth += bandwidth / 10;
+ 
+         ccgroup = NULL;
+@@ -2447,6 +2475,19 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+         return AVERROR(ENOMEM);
+     }
+ 
++    if (vs->scaled_start_pts == AV_NOPTS_VALUE) {
++        vs->scaled_start_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
++    }
++
++    if (vs->scaled_cur_pts == AV_NOPTS_VALUE) {
++        vs->scaled_cur_pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
++    } else {
++        int64_t pts = av_rescale_q(pkt->pts, st->time_base, AV_TIME_BASE_Q);
++        if (pts > vs->scaled_cur_pts) {
++            vs->scaled_cur_pts = pts;
++        }
++    }
++
+     end_pts = hls->recording_time * vs->number;
+ 
+     if (vs->sequence - vs->nb_entries > hls->start_sequence && hls->init_time > 0) {
+@@ -2667,6 +2708,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+     }
+ 
+     vs->packets_written++;
++    vs->bytes_written += (uint64_t)pkt->size;
+     if (oc->pb) {
+         ret = ff_write_chained(oc, stream_index, pkt, s, 0);
+         vs->video_keyframe_size += pkt->size;
+@@ -2854,6 +2896,36 @@ failed:
+     return 0;
+ }
+ 
++static void print_stream_mapping(AVFormatContext *s) {
++    int i = 0, j = 0;
++    HLSContext *hls = s->priv_data;
++    VariantStream *vs = NULL;
++    AVStream *avs = NULL;
++
++    fprintf(stderr, "hls.streammap:{\"address\":\"%s\",\"variants\":[", s->url);
++    for (i = 0; i < hls->nb_varstreams; i++) {
++        vs = &hls->var_streams[i];
++
++        fprintf(stderr, "{\"variant\":%d,\"address\":\"%s\",\"streams\":[", i, vs->m3u8_name);
++        for (j = 0; j < vs->nb_streams; j++) {
++            avs = vs->streams[j];
++
++            fprintf(stderr, "%d", avs->index);
++
++            if (j != vs->nb_streams-1) {
++                fprintf(stderr, ",");
++            }
++        }
++        fprintf(stderr, "]}");
++
++        if (i != hls->nb_varstreams-1) {
++            fprintf(stderr, ",");
++        }
++    }
++    fprintf(stderr, "]}\n");
++
++    return;
++}
+ 
+ static int hls_init(AVFormatContext *s)
+ {
+@@ -2961,6 +3033,8 @@ static int hls_init(AVFormatContext *s)
+         vs->sequence  = hls->start_sequence;
+         vs->start_pts = AV_NOPTS_VALUE;
+         vs->end_pts   = AV_NOPTS_VALUE;
++        vs->scaled_start_pts = AV_NOPTS_VALUE;
++        vs->scaled_cur_pts = AV_NOPTS_VALUE;
+         vs->current_segment_final_filename_fmt[0] = '\0';
+         vs->initial_prog_date_time = initial_program_date_time;
+ 
+@@ -3103,6 +3177,9 @@ static int hls_init(AVFormatContext *s)
+         vs->number++;
+     }
+ 
++    // Write out HLS stream mapping
++    print_stream_mapping(s);
++
+     return ret;
+ }
+ 
+
+base-commit: 8cda858db538d0c09cafcdfd68939da4d19f0175
+-- 
+2.39.3 (Apple Git-145)
+

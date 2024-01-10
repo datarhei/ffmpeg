@@ -1,60 +1,43 @@
-From 614b3f1eb76a2fe40eda49232fee8e7a6418d4fd Mon Sep 17 00:00:00 2001
+From d65f402f0102c34f8411757a118509e3cfbd4012 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Thu, 13 Apr 2023 14:38:05 +0200
-Subject: [PATCH v26] JSON progress report (ffmpeg 5.1)
+Date: Wed, 10 Jan 2024 16:06:17 +0100
+Subject: [PATCH v27] JSON progress report (ffmpeg 6.1)
 
 ---
- fftools/ffmpeg.c     | 245 +++++++++++++++++++++++++++++++++--
- fftools/ffmpeg.h     |   8 ++
- fftools/ffmpeg_mux.c | 299 +++++++++++++++++++++++++++++++++++++++++++
- fftools/ffmpeg_opt.c | 110 ++++++++++++++++
- 4 files changed, 651 insertions(+), 11 deletions(-)
+ fftools/ffmpeg.c       | 198 +++++++++++++++++++++++-
+ fftools/ffmpeg.h       |   1 +
+ fftools/ffmpeg_demux.c | 118 ++++++---------
+ fftools/ffmpeg_demux.h | 121 +++++++++++++++
+ fftools/ffmpeg_mux.c   | 337 +++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_mux.h   |  12 ++
+ fftools/ffmpeg_opt.c   | 112 ++++++++++++++
+ 7 files changed, 823 insertions(+), 76 deletions(-)
+ create mode 100644 fftools/ffmpeg_demux.h
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index e7384f05..1c15fd96 100644
+index 46a85b41..1e4bf21f 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
-@@ -1504,12 +1504,11 @@ static void print_final_stats(int64_t total_size)
-     }
+@@ -99,6 +99,8 @@
+ 
+ #include "cmdutils.h"
+ #include "ffmpeg.h"
++#include "ffmpeg_demux.h"
++#include "ffmpeg_mux.h"
+ #include "sync_queue.h"
+ 
+ const char program_name[] = "ffmpeg";
+@@ -493,7 +495,7 @@ void close_output_stream(OutputStream *ost)
+         sq_send(of->sq_encode, ost->sq_idx_encode, SQFRAME(NULL));
  }
  
 -static void print_report(int is_last_report, int64_t timer_start, int64_t cur_time)
 +static void print_default_report(int is_last_report, int64_t timer_start, int64_t cur_time)
  {
      AVBPrint buf, buf_script;
-     OutputStream *ost;
--    AVFormatContext *oc;
--    int64_t total_size;
-+    int64_t total_size = 0;
-     AVCodecContext *enc;
-     int vid, i;
-     double bitrate;
-@@ -1538,13 +1537,6 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
- 
-     t = (cur_time-timer_start) / 1000000.0;
- 
--
--    oc = output_files[0]->ctx;
--
--    total_size = avio_size(oc->pb);
--    if (total_size <= 0) // FIXME improve avio_size() so it works with non seekable output too
--        total_size = avio_tell(oc->pb);
--
-     vid = 0;
-     av_bprint_init(&buf, 0, AV_BPRINT_SIZE_AUTOMATIC);
-     av_bprint_init(&buf_script, 0, AV_BPRINT_SIZE_AUTOMATIC);
-@@ -1627,6 +1619,9 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
- 
-         if (is_last_report)
-             nb_frames_drop += ost->last_dropped;
-+
-+        total_size += ost->data_size;
-+        total_size += ost->enc_ctx->extradata_size;
-     }
- 
-     secs = FFABS(pts) / AV_TIME_BASE;
-@@ -1714,6 +1709,201 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
-         print_final_stats(total_size);
+     int64_t total_size = of_filesize(output_files[0]);
+@@ -648,6 +650,200 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+     first_report = 0;
  }
  
 +/**
@@ -67,14 +50,12 @@ index e7384f05..1c15fd96 100644
 +static void print_json_report(int is_last_report, int64_t timer_start, int64_t cur_time)
 +{
 +    AVBPrint buf;
-+    InputStream *ist;
-+    OutputStream *ost;
 +    uint64_t stream_size, total_size = 0;
 +    AVCodecContext *enc;
-+    int i, j;
++    uint64_t nb_frames_dup = 0, nb_frames_drop = 0;
 +    uint64_t first_vid, first_frame_number = 0, first_packet_number = 0;
 +    double speed;
-+    int64_t min_pts = INT64_MIN + 1, pts = INT64_MIN + 1;
++    int64_t pts = AV_NOPTS_VALUE;
 +    static int64_t last_time = -1;
 +    int hours, mins, secs, us;
 +    const char *hours_sign;
@@ -102,31 +83,29 @@ index e7384f05..1c15fd96 100644
 +
 +    av_bprintf(&buf, "ffmpeg.progress:{");
 +    av_bprintf(&buf, "\"inputs\":[");
-+    for(i = 0; i < nb_input_files; i++) {
-+        InputFile *f = input_files[i];
 +
-+        for(j = 0; j < f->nb_streams; j++) {
-+            ist = input_streams[f->ist_index + j];
++    for (InputStream *ist = ist_iter(NULL); ist; ist = ist_iter(ist)) {
++        DemuxStream *ds = ds_from_ist(ist);
 +
-+            av_bprintf(&buf, "{");
-+            av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", i, j);
++        av_bprintf(&buf, "{");
++        av_bprintf(&buf, "\"index\":%d,\"stream\":%d,", ist->file_index, ist->index);
 +
-+            av_bprintf(&buf, "\"framerate\":{\"min\":%.3f,\"max\":%.3f,\"avg\":%.3f},", ist->min_framerate, ist->max_framerate, ist->avg_framerate);
++        av_bprintf(&buf, "\"framerate\":{\"min\":%.3f,\"max\":%.3f,\"avg\":%.3f},", ds->min_framerate, ds->max_framerate, ds->avg_framerate);
++        av_bprintf(&buf, "\"gop\":{\"min\":%.3f,\"max\":%.3f,\"avg\":%.3f},", ds->min_gopsize, ds->max_gopsize, ds->avg_gopsize);
 +
-+            av_bprintf(&buf,
-+                "\"frame\":%" PRIu64 ",\"keyframe\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
-+                ist->frames_decoded == 0 ? ist->nb_packets
-+                                         : ist->frames_decoded,
-+                ist->nb_keyframes,
-+                ist->nb_packets);
++        av_bprintf(&buf,
++            "\"frame\":%" PRIu64 ",\"keyframe\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
++            ist->frames_decoded == 0 ? ds->nb_packets
++                                        : ist->frames_decoded,
++            ds->nb_keyframes,
++            ds->nb_packets);
 +
-+            av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64, ist->data_size / 1024.0, ist->data_size);
++        av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64, ds->data_size / 1024.0, ds->data_size);
 +
-+            if(i == (nb_input_files - 1) && j == (f->nb_streams - 1)) {
-+                av_bprintf(&buf, "}");
-+            } else {
-+                av_bprintf(&buf, "},");
-+            }
++        if(ist_iter(ist) == NULL) {
++            av_bprintf(&buf, "}");
++        } else {
++            av_bprintf(&buf, "},");
 +        }
 +    }
 +
@@ -135,11 +114,12 @@ index e7384f05..1c15fd96 100644
 +    first_vid = 1;
 +
 +    av_bprintf(&buf, "\"outputs\":[");
-+    for(i = 0; i < nb_output_streams; i++) {
++    for (OutputStream *ost = ost_iter(NULL); ost; ost = ost_iter(ost)) {
++        MuxStream *ms = ms_from_ost(ost);
++
 +        q = -1;
-+        ost = output_streams[i];
-+        enc = ost->enc_ctx;
-+        if(!ost->stream_copy) {
++        enc = ost->enc_ctx ? ost->enc_ctx : ost->ist->dec_ctx;
++        if(ost->enc) {
 +            q = ost->quality / (float)FF_QP2LAMBDA;
 +        }
 +
@@ -147,51 +127,54 @@ index e7384f05..1c15fd96 100644
 +        av_bprintf(
 +            &buf, "\"index\":%d,\"stream\":%d,", ost->file_index, ost->index);
 +
++        av_bprintf(&buf, "\"framerate\":{\"min\":%.3f,\"max\":%.3f,\"avg\":%.3f},", ms->min_framerate, ms->max_framerate, ms->avg_framerate);
++        av_bprintf(&buf, "\"gop\":{\"min\":%.3f,\"max\":%.3f,\"avg\":%.3f},", ms->min_gopsize, ms->max_gopsize, ms->avg_gopsize);
++
 +        av_bprintf(&buf,
 +            "\"frame\":%" PRIu64 ",\"keyframe\":%" PRIu64 ",\"packet\":%" PRIu64 ",",
-+            ost->frames_encoded == 0 ? ost->packets_written
++            ost->frames_encoded == 0 ? ms->nb_packets
 +                                     : ost->frames_encoded,
-+            ost->nb_keyframes,
-+            ost->packets_written);
++            ms->nb_keyframes,
++            ms->nb_packets);
 +
 +        if(enc->codec_type == AVMEDIA_TYPE_VIDEO) {
 +            av_bprintf(&buf, "\"q\":%.1f,", q);
 +
 +            if(first_vid == 1) {
 +                first_frame_number = ost->frames_encoded == 0
-+                    ? ost->packets_written
++                    ? ms->nb_packets
 +                    : ost->frames_encoded;
-+                first_packet_number = ost->packets_written;
++                first_packet_number = ms->nb_packets;
 +                first_q = q;
 +
 +                first_vid = 0;
 +            }
 +        }
 +
++        if(ost->filter) {
++            nb_frames_dup  += ost->filter->nb_frames_dup;
++            nb_frames_drop += ost->filter->nb_frames_drop;
++        }
++
 +        /* compute min output value */
-+        pts = INT64_MIN + 1;
-+        if(av_stream_get_end_pts(ost->st) != AV_NOPTS_VALUE) {
-+            pts = FFMAX(pts,
-+                av_rescale_q(av_stream_get_end_pts(ost->st),
-+                    ost->st->time_base,
-+                    AV_TIME_BASE_Q));
-+            min_pts = FFMAX(min_pts,
-+                av_rescale_q(av_stream_get_end_pts(ost->st),
-+                    ost->st->time_base,
-+                    AV_TIME_BASE_Q));
++        if (ost->last_mux_dts != AV_NOPTS_VALUE) {
++            if (pts == AV_NOPTS_VALUE || ost->last_mux_dts > pts)
++                pts = ost->last_mux_dts;
++            if (copy_ts) {
++                if (copy_ts_first_pts == AV_NOPTS_VALUE && pts > 1)
++                    copy_ts_first_pts = pts;
++                if (copy_ts_first_pts != AV_NOPTS_VALUE)
++                    pts -= copy_ts_first_pts;
++            }
 +        }
 +
-+        if(is_last_report) {
-+            nb_frames_drop += ost->last_dropped;
-+        }
-+
-+        stream_size = ost->data_size + ost->enc_ctx->extradata_size;
++        stream_size = ms->data_size_mux;
 +        total_size += stream_size;
 +
 +        av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64 ",", stream_size / 1024.0, stream_size);
-+        av_bprintf(&buf, "\"extradata_size_bytes\":%d", ost->enc_ctx->extradata_size);
++        av_bprintf(&buf, "\"extradata_size_bytes\":%d", enc->extradata_size);
 +
-+        if(i == (nb_output_streams - 1)) {
++        if(ost_iter(ost) == NULL) {
 +            av_bprintf(&buf, "}");
 +        } else {
 +            av_bprintf(&buf, "},");
@@ -208,15 +191,15 @@ index e7384f05..1c15fd96 100644
 +
 +    av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64 ",", total_size / 1024.0, total_size);
 +
-+    secs = FFABS(min_pts) / AV_TIME_BASE;
-+    us = FFABS(min_pts) % AV_TIME_BASE;
-+    mins = secs / 60;
-+    secs %= 60;
-+    hours = mins / 60;
-+    mins %= 60;
-+    hours_sign = (min_pts < 0) ? "-" : "";
++    us    = FFABS64U(pts) % AV_TIME_BASE;
++    secs  = FFABS64U(pts) / AV_TIME_BASE % 60;
++    mins  = FFABS64U(pts) / AV_TIME_BASE / 60 % 60;
++    hours = FFABS64U(pts) / AV_TIME_BASE / 3600;
++    hours_sign = (pts < 0) ? "-" : "";
 +
-+    if(min_pts != AV_NOPTS_VALUE) {
++    speed   = pts != AV_NOPTS_VALUE && t != 0.0 ? (double)pts / AV_TIME_BASE / t : -1;
++
++    if(pts != AV_NOPTS_VALUE) {
 +        av_bprintf(&buf,
 +            "\"time\":\"%s%dh%dm%d.%ds\",",
 +            hours_sign,
@@ -226,7 +209,6 @@ index e7384f05..1c15fd96 100644
 +            (100 * us) / AV_TIME_BASE);
 +    }
 +
-+    speed = t != 0.0 ? (double)min_pts / AV_TIME_BASE / t : -1;
 +    av_bprintf(&buf, "\"speed\":%.3g,", speed);
 +
 +    av_bprintf(&buf, "\"dup\":%"PRId64",\"drop\":%"PRId64, nb_frames_dup, nb_frames_drop);
@@ -252,132 +234,358 @@ index e7384f05..1c15fd96 100644
 +    }
 +}
 +
- static int ifilter_parameters_from_codecpar(InputFilter *ifilter, AVCodecParameters *par)
+ int copy_av_subtitle(AVSubtitle *dst, const AVSubtitle *src)
  {
-     int ret;
-@@ -2660,6 +2850,9 @@ static int init_input_stream(int ist_index, char *error, int error_len)
-     ist->next_pts = AV_NOPTS_VALUE;
-     ist->next_dts = AV_NOPTS_VALUE;
- 
-+    ist->min_framerate = 0.0;
-+    ist->max_framerate = 0.0;
-+
-     return 0;
- }
- 
-@@ -3988,6 +4181,10 @@ static int process_input(int file_index)
-     ist->data_size += pkt->size;
-     ist->nb_packets++;
- 
-+    if(pkt->flags & AV_PKT_FLAG_KEY) {
-+        ist->nb_keyframes++;
-+    }
-+
-     if (ist->discard)
-         goto discard_packet;
- 
-@@ -4153,9 +4350,35 @@ static int process_input(int file_index)
-         }
-     }
- 
--    if (pkt->dts != AV_NOPTS_VALUE)
-+    if (pkt->dts != AV_NOPTS_VALUE) {
-         ifile->last_ts = av_rescale_q(pkt->dts, ist->st->time_base, AV_TIME_BASE_Q);
- 
-+        if(pkt->flags & AV_PKT_FLAG_KEY) {
-+            int64_t ts = av_rescale_q(pkt->dts, ist->st->time_base, AV_TIME_BASE_Q);
-+
-+            // fps estimation
-+            if(ts - ist->last_keyframe_dts != 0) {
-+                double framerate = (ist->nb_packets - ist->last_keyframe_pktnb) / (double)(ts - ist->last_keyframe_dts) * (double)AV_TIME_BASE;
-+
-+                if(ist->min_framerate == 0.0 || framerate < ist->min_framerate) {
-+                    ist->min_framerate = framerate;
-+                }
-+
-+                if(ist->max_framerate == 0.0 || framerate > ist->max_framerate) {
-+                    ist->max_framerate = framerate;
-+                }
-+
-+                ist->sum_framerate += framerate;
-+                ist->nsamples_framerate++;
-+
-+                ist->avg_framerate = ((ist->nsamples_framerate-1)*ist->avg_framerate + framerate) / (double)ist->nsamples_framerate;
-+            }
-+
-+            ist->last_keyframe_dts = ts;
-+            ist->last_keyframe_pktnb = ist->nb_packets;
-+        }
-+    }
-+
-     if (debug_ts) {
-         av_log(NULL, AV_LOG_INFO, "demuxer+ffmpeg -> ist_index:%d type:%s pkt_pts:%s pkt_pts_time:%s pkt_dts:%s pkt_dts_time:%s duration:%s duration_time:%s off:%s off_time:%s\n",
-                ifile->ist_index + pkt->stream_index, av_get_media_type_string(ist->dec_ctx->codec_type),
+     int ret = AVERROR_BUG;
 diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
-index 391a35cf..302c159f 100644
+index 0983d026..50d0d45f 100644
 --- a/fftools/ffmpeg.h
 +++ b/fftools/ffmpeg.h
-@@ -330,6 +330,11 @@ typedef struct InputStream {
-     int64_t       pts;       ///< current pts of the decoded frame  (in AV_TIME_BASE units)
-     int           wrap_correction_done;
- 
-+    int64_t last_keyframe_dts;
-+    int64_t last_keyframe_pktnb;
-+    int64_t nsamples_framerate;
-+    double sum_framerate, min_framerate, max_framerate, avg_framerate;
-+
-     int64_t filter_in_rescale_delta_last;
- 
-     int64_t min_pts; /* pts with the smallest value in a current stream */
-@@ -391,6 +396,7 @@ typedef struct InputStream {
-     uint64_t data_size;
-     /* number of packets successfully read for this stream */
-     uint64_t nb_packets;
-+    uint64_t nb_keyframes;
-     // number of frames/samples retrieved from the decoder
-     uint64_t frames_decoded;
-     uint64_t samples_decoded;
-@@ -553,6 +559,7 @@ typedef struct OutputStream {
-     uint64_t data_size;
-     // number of packets send to the muxer
-     uint64_t packets_written;
-+    uint64_t nb_keyframes;
-     // number of frames/samples sent to the encoder
-     uint64_t frames_encoded;
-     uint64_t samples_encoded;
-@@ -636,6 +643,7 @@ extern int debug_ts;
+@@ -675,6 +675,7 @@ extern int debug_ts;
  extern int exit_on_error;
  extern int abort_on_flags;
  extern int print_stats;
 +extern int print_jsonstats;
  extern int64_t stats_period;
- extern int qp_hist;
  extern int stdin_interaction;
+ extern AVIOContext *progress_avio;
+diff --git a/fftools/ffmpeg_demux.c b/fftools/ffmpeg_demux.c
+index 350f233a..173fa298 100644
+--- a/fftools/ffmpeg_demux.c
++++ b/fftools/ffmpeg_demux.c
+@@ -20,6 +20,7 @@
+ #include <stdint.h>
+ 
+ #include "ffmpeg.h"
++#include "ffmpeg_demux.h"
+ 
+ #include "libavutil/avassert.h"
+ #include "libavutil/avstring.h"
+@@ -52,81 +53,6 @@ static const char *const opt_name_display_rotations[]         = {"display_rotati
+ static const char *const opt_name_display_hflips[]            = {"display_hflip", NULL};
+ static const char *const opt_name_display_vflips[]            = {"display_vflip", NULL};
+ 
+-typedef struct DemuxStream {
+-    InputStream ist;
+-
+-    // name used for logging
+-    char log_name[32];
+-
+-    double ts_scale;
+-
+-    int streamcopy_needed;
+-
+-    int wrap_correction_done;
+-    int saw_first_ts;
+-    ///< dts of the first packet read for this stream (in AV_TIME_BASE units)
+-    int64_t first_dts;
+-
+-    /* predicted dts of the next packet read for this stream or (when there are
+-     * several frames in a packet) of the next frame in current packet (in AV_TIME_BASE units) */
+-    int64_t       next_dts;
+-    ///< dts of the last packet read for this stream (in AV_TIME_BASE units)
+-    int64_t       dts;
+-
+-    int64_t min_pts; /* pts with the smallest value in a current stream */
+-    int64_t max_pts; /* pts with the higher value in a current stream */
+-
+-    /* number of packets successfully read for this stream */
+-    uint64_t nb_packets;
+-    // combined size of all the packets read
+-    uint64_t data_size;
+-} DemuxStream;
+-
+-typedef struct Demuxer {
+-    InputFile f;
+-
+-    // name used for logging
+-    char log_name[32];
+-
+-    int64_t wallclock_start;
+-
+-    /**
+-     * Extra timestamp offset added by discontinuity handling.
+-     */
+-    int64_t ts_offset_discont;
+-    int64_t last_ts;
+-
+-    /* number of times input stream should be looped */
+-    int loop;
+-    /* actual duration of the longest stream in a file at the moment when
+-     * looping happens */
+-    int64_t duration;
+-    /* time base of the duration */
+-    AVRational time_base;
+-
+-    /* number of streams that the user was warned of */
+-    int nb_streams_warn;
+-
+-    double readrate_initial_burst;
+-
+-    AVThreadMessageQueue *in_thread_queue;
+-    int                   thread_queue_size;
+-    pthread_t             thread;
+-    int                   non_blocking;
+-
+-    int                   read_started;
+-} Demuxer;
+-
+-typedef struct DemuxMsg {
+-    AVPacket *pkt;
+-    int looping;
+-} DemuxMsg;
+-
+-static DemuxStream *ds_from_ist(InputStream *ist)
+-{
+-    return (DemuxStream*)ist;
+-}
+-
+ static Demuxer *demuxer_from_ifile(InputFile *f)
+ {
+     return (Demuxer*)f;
+@@ -480,6 +406,48 @@ static int input_packet_process(Demuxer *d, DemuxMsg *msg, AVPacket *src)
+     ds->data_size += pkt->size;
+     ds->nb_packets++;
+ 
++    if(pkt->flags & AV_PKT_FLAG_KEY || ist->dec_ctx->codec_id == AV_CODEC_ID_WRAPPED_AVFRAME) {
++        ds->nb_keyframes++;
++
++        if (pkt->dts != AV_NOPTS_VALUE) {
++            int64_t ts = av_rescale_q(pkt->dts, ist->st->time_base, AV_TIME_BASE_Q);
++
++            // fps estimation
++            if(ts - ds->last_keyframe_dts > 0) {
++                double framerate = (ds->nb_packets - ds->last_keyframe_pktnb) / (double)(ts - ds->last_keyframe_dts) * (double)AV_TIME_BASE;
++                double gopsize = (double)(ds->nb_packets - ds->last_keyframe_pktnb);
++
++                if(ds->min_framerate == 0.0 || framerate < ds->min_framerate) {
++                    ds->min_framerate = framerate;
++                }
++
++                if(ds->max_framerate == 0.0 || framerate > ds->max_framerate) {
++                    ds->max_framerate = framerate;
++                }
++
++                ds->sum_framerate += framerate;
++
++                if(ds->min_gopsize == 0.0 || gopsize < ds->min_gopsize) {
++                    ds->min_gopsize = gopsize;
++                }
++
++                if(ds->max_gopsize == 0.0 || gopsize > ds->max_gopsize) {
++                    ds->max_gopsize = gopsize;
++                }
++
++                ds->sum_gopsize += gopsize;
++
++                ds->nsamples_average++;
++
++                ds->avg_framerate = ((ds->nsamples_average-1)*ds->avg_framerate + framerate) / (double)ds->nsamples_average;
++                ds->avg_gopsize = ((ds->nsamples_average-1)*ds->avg_gopsize + gopsize) / (double)ds->nsamples_average;
++            }
++
++            ds->last_keyframe_dts = ts;
++            ds->last_keyframe_pktnb = ds->nb_packets;
++        }
++    }
++
+     if (debug_ts) {
+         av_log(NULL, AV_LOG_INFO, "demuxer+ffmpeg -> ist_index:%d:%d type:%s pkt_pts:%s pkt_pts_time:%s pkt_dts:%s pkt_dts_time:%s duration:%s duration_time:%s off:%s off_time:%s\n",
+                f->index, pkt->stream_index,
+diff --git a/fftools/ffmpeg_demux.h b/fftools/ffmpeg_demux.h
+new file mode 100644
+index 00000000..937f8a22
+--- /dev/null
++++ b/fftools/ffmpeg_demux.h
+@@ -0,0 +1,121 @@
++/*
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#include <float.h>
++#include <stdint.h>
++
++#include "ffmpeg.h"
++
++#include "libavutil/avassert.h"
++#include "libavutil/avstring.h"
++#include "libavutil/display.h"
++#include "libavutil/error.h"
++#include "libavutil/intreadwrite.h"
++#include "libavutil/opt.h"
++#include "libavutil/parseutils.h"
++#include "libavutil/pixdesc.h"
++#include "libavutil/time.h"
++#include "libavutil/timestamp.h"
++#include "libavutil/thread.h"
++#include "libavutil/threadmessage.h"
++
++#include "libavcodec/packet.h"
++
++#include "libavformat/avformat.h"
++
++typedef struct DemuxStream {
++    InputStream ist;
++
++    // name used for logging
++    char log_name[32];
++
++    double ts_scale;
++
++    int streamcopy_needed;
++
++    int wrap_correction_done;
++    int saw_first_ts;
++    ///< dts of the first packet read for this stream (in AV_TIME_BASE units)
++    int64_t first_dts;
++
++    /* predicted dts of the next packet read for this stream or (when there are
++     * several frames in a packet) of the next frame in current packet (in AV_TIME_BASE units) */
++    int64_t       next_dts;
++    ///< dts of the last packet read for this stream (in AV_TIME_BASE units)
++    int64_t       dts;
++
++    int64_t min_pts; /* pts with the smallest value in a current stream */
++    int64_t max_pts; /* pts with the higher value in a current stream */
++
++    /* number of packets successfully read for this stream */
++    uint64_t nb_packets;
++    uint64_t nb_keyframes;
++    // combined size of all the packets read
++    uint64_t data_size;
++
++    int64_t last_keyframe_dts;
++    int64_t last_keyframe_pktnb;
++    int64_t nsamples_average;
++    double sum_framerate, min_framerate, max_framerate, avg_framerate;
++    double sum_gopsize, min_gopsize, max_gopsize, avg_gopsize;
++} DemuxStream;
++
++typedef struct Demuxer {
++    InputFile f;
++
++    // name used for logging
++    char log_name[32];
++
++    int64_t wallclock_start;
++
++    /**
++     * Extra timestamp offset added by discontinuity handling.
++     */
++    int64_t ts_offset_discont;
++    int64_t last_ts;
++
++    /* number of times input stream should be looped */
++    int loop;
++    /* actual duration of the longest stream in a file at the moment when
++     * looping happens */
++    int64_t duration;
++    /* time base of the duration */
++    AVRational time_base;
++
++    /* number of streams that the user was warned of */
++    int nb_streams_warn;
++
++    double readrate_initial_burst;
++
++    AVThreadMessageQueue *in_thread_queue;
++    int                   thread_queue_size;
++    pthread_t             thread;
++    int                   non_blocking;
++
++    int                   read_started;
++} Demuxer;
++
++typedef struct DemuxMsg {
++    AVPacket *pkt;
++    int looping;
++} DemuxMsg;
++
++static DemuxStream *ds_from_ist(InputStream *ist)
++{
++    return (DemuxStream*)ist;
++}
+\ No newline at end of file
 diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
-index a55fd18f..ae82baf3 100644
+index 7a924dba..0617b7f1 100644
 --- a/fftools/ffmpeg_mux.c
 +++ b/fftools/ffmpeg_mux.c
-@@ -26,6 +26,8 @@
+@@ -31,6 +31,8 @@
  #include "libavutil/log.h"
  #include "libavutil/mem.h"
  #include "libavutil/timestamp.h"
 +#include "libavutil/bprint.h"
 +#include "libavutil/pixdesc.h"
+ #include "libavutil/thread.h"
  
  #include "libavcodec/packet.h"
+@@ -135,8 +137,51 @@ static int write_packet(Muxer *mux, OutputStream *ost, AVPacket *pkt)
+     ms->last_mux_dts = pkt->dts;
  
-@@ -152,6 +154,10 @@ void of_write_packet(OutputFile *of, AVPacket *pkt, OutputStream *ost,
-     ost->data_size += pkt->size;
-     ost->packets_written++;
+     ms->data_size_mux += pkt->size;
++    ms->nb_packets++;
+     frame_num = atomic_fetch_add(&ost->packets_written, 1);
  
 +    if(pkt->flags & AV_PKT_FLAG_KEY) {
-+        ost->nb_keyframes++;
++        ms->nb_keyframes++;
++
++        if (pkt->dts != AV_NOPTS_VALUE) {
++            int64_t ts = av_rescale_q(pkt->dts, ost->st->time_base, AV_TIME_BASE_Q);
++
++            // fps estimation
++            if(ts - ms->last_keyframe_dts > 0) {
++                double framerate = (ms->nb_packets - ms->last_keyframe_pktnb) / (double)(ts - ms->last_keyframe_dts) * (double)AV_TIME_BASE;
++                double gopsize = (double)(ms->nb_packets - ms->last_keyframe_pktnb);
++
++                if(ms->min_framerate == 0.0 || framerate < ms->min_framerate) {
++                    ms->min_framerate = framerate;
++                }
++
++                if(ms->max_framerate == 0.0 || framerate > ms->max_framerate) {
++                    ms->max_framerate = framerate;
++                }
++
++                ms->sum_framerate += framerate;
++
++                if(ms->min_gopsize == 0.0 || gopsize < ms->min_gopsize) {
++                    ms->min_gopsize = gopsize;
++                }
++
++                if(ms->max_gopsize == 0.0 || gopsize > ms->max_gopsize) {
++                    ms->max_gopsize = gopsize;
++                }
++
++                ms->sum_gopsize += gopsize;
++
++                ms->nsamples_average++;
++
++                ms->avg_framerate = ((ms->nsamples_average-1)*ms->avg_framerate + framerate) / (double)ms->nsamples_average;
++                ms->avg_gopsize = ((ms->nsamples_average-1)*ms->avg_gopsize + gopsize) / (double)ms->nsamples_average;
++            }
++
++            ms->last_keyframe_dts = ts;
++            ms->last_keyframe_pktnb = ms->nb_packets;
++        }
 +    }
 +
      pkt->stream_index = ost->index;
  
      if (debug_ts) {
-@@ -226,6 +232,297 @@ fail:
+@@ -587,6 +632,296 @@ fail:
      return ret;
  }
  
@@ -454,11 +662,11 @@ index a55fd18f..ae82baf3 100644
 +/**
 + * Print all outputs in JSON format
 + */
-+static void print_json_outputs()
++static void print_json_outputs(void)
 +{
 +    static int ost_all_initialized = 0;
-+    int i, j, k;
-+    int nb_initialized = 0;
++    int i, j;
++    int nb_output_streams = 0, nb_initialized = 0;
 +    AVBPrint buf;
 +
 +    if(print_jsonstats != 1) {
@@ -470,8 +678,8 @@ index a55fd18f..ae82baf3 100644
 +    }
 +
 +    // count how many outputs are initialized
-+    for(i = 0; i < nb_output_streams; i++) {
-+        OutputStream *ost = output_streams[i];
++    for (OutputStream *ost = ost_iter(NULL); ost; ost = ost_iter(ost)) {
++        nb_output_streams++;
 +        if(ost->initialized) {
 +            nb_initialized++;
 +        }
@@ -489,15 +697,17 @@ index a55fd18f..ae82baf3 100644
 +    av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
 +
 +    av_bprintf(&buf, "ffmpeg.outputs:[");
-+    for(i = 0; i < nb_output_streams; i++) {
-+        OutputStream *ost = output_streams[i];
-+        OutputFile *f = output_files[ost->file_index];
-+        AVFormatContext *ctx = f->ctx;
++    for (OutputStream *ost = ost_iter(NULL); ost; ost = ost_iter(ost)) {
++        OutputFile *of = output_files[ost->file_index];
++        Muxer *mux = mux_from_of(of);
++        AVFormatContext *ctx = mux->fc;
 +        AVStream *st = ost->st;
 +        AVDictionaryEntry *lang =
 +            av_dict_get(st->metadata, "language", NULL, 0);
-+        AVCodecContext *enc = ost->enc_ctx;
++        AVCodecContext *enc = ost->enc_ctx ? ost->enc_ctx : ost->ist->dec_ctx;
 +        char *url = NULL;
++
++        fprintf(stderr, "*enc is NULL: %s\n", enc == NULL ? "true" : "false");
 +
 +        if(av_escape(&url,
 +               ctx->url,
@@ -519,13 +729,14 @@ index a55fd18f..ae82baf3 100644
 +            ",",
 +            av_get_media_type_string(enc->codec_type),
 +            avcodec_get_name(enc->codec_id),
-+            ost->stream_copy ? "copy"
++            !ost->enc ? "copy"
 +                             : (enc->codec ? enc->codec->name : "unknown"),
 +            enc->bit_rate / 1000);
 +        av_bprintf(&buf,
-+            "\"duration_sec\":%f,\"language\":\"%s\"",
++            "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d",
 +            0.0,
-+            lang != NULL ? lang->value : "und");
++            lang != NULL ? lang->value : "und",
++            st->codecpar->profile, st->codecpar->level);
 +
 +        av_free(url);
 +
@@ -554,7 +765,7 @@ index a55fd18f..ae82baf3 100644
 +                enc->ch_layout.nb_channels);
 +        }
 +
-+        if(i == (nb_output_streams - 1)) {
++        if(ost_iter(ost) == NULL) {
 +            av_bprintf(&buf, "}");
 +        } else {
 +            av_bprintf(&buf, "},");
@@ -587,15 +798,15 @@ index a55fd18f..ae82baf3 100644
 +
 +    av_bprintf(&buf, "\"mapping\":[");
 +
-+    for(i = 0; i < nb_input_streams; i++) {
-+        InputStream *ist = input_streams[i];
-+
-+        for(j = 0; j < ist->nb_filters; j++) {
-+            if(ist->filters[j]->graph) {
++    for (InputStream *ist = ist_iter(NULL); ist; ist = ist_iter(ist)) {
++        for(i = 0; i < ist->nb_filters; i++) {
++            if(ist->filters[i]->graph) {
 +                char *name = NULL;
-+                for(k = 0; k < ist->filters[j]->graph->nb_inputs; k++) {
-+                    if(ist->filters[j]->graph->inputs[k]->ist == ist) {
-+                        name = ist->filters[j]->graph->inputs[k]->filter->name;
++                AVFilterGraph *fg = ist->filters[i]->graph->graph;
++                for(j = 0; j < fg->nb_filters; j++) {
++                    AVFilterContext *ctx = fg->filters[j];
++                    if(ctx->nb_inputs == 0) { // if there are no input links, then this is the first filter in the chain
++                        name = ctx->name;
 +                        break;
 +                    }
 +                }
@@ -604,15 +815,13 @@ index a55fd18f..ae82baf3 100644
 +                    "{\"input\":{\"index\":%d,\"stream\":%d},\"graph\":{\"index\":%d,\"name\":\"%s\"},\"output\":null},",
 +                    ist->file_index,
 +                    ist->st->index,
-+                    ist->filters[j]->graph->index,
++                    ist->filters[i]->graph->index,
 +                    name);
 +            }
 +        }
 +    }
 +
-+    for(i = 0; i < nb_output_streams; i++) {
-+        OutputStream *ost = output_streams[i];
-+
++    for (OutputStream *ost = ost_iter(NULL); ost; ost = ost_iter(ost)) {
 +        if(ost->attachment_filename) {
 +            av_bprintf(&buf,
 +                "{\"input\":null,\"file\":\"%s\",\"output\":{\"index\":%d,\"stream\":%d}},",
@@ -624,12 +833,15 @@ index a55fd18f..ae82baf3 100644
 +
 +        if(ost->filter && ost->filter->graph) {
 +            char *name = NULL;
-+            for(j = 0; j < ost->filter->graph->nb_outputs; j++) {
-+                if(ost->filter->graph->outputs[j]->ost == ost) {
-+                    name = ost->filter->graph->outputs[j]->filter->name;
++            AVFilterGraph *fg = ost->filter->graph->graph;
++            for(j = 0; j < fg->nb_filters; j++) {
++                AVFilterContext *ctx = fg->filters[j];
++                if(ctx->nb_outputs == 0) { // if there are no output links, then this is the last filter in the chain
++                    name = ctx->name;
 +                    break;
 +                }
 +            }
++
 +            av_bprintf(&buf,
 +                "{\"input\":null,\"graph\":{\"index\":%d,\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}}",
 +                ost->filter->graph->index,
@@ -639,25 +851,20 @@ index a55fd18f..ae82baf3 100644
 +            goto next_output;
 +        }
 +
-+        av_bprintf(&buf,
-+            "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d}",
-+            input_streams[ost->source_index]->file_index,
-+            input_streams[ost->source_index]->st->index,
-+            ost->file_index,
-+            ost->index);
-+        av_bprintf(&buf, ",\"copy\":%s", ost->stream_copy ? "true" : "false");
-+
-+        if(ost->sync_ist != input_streams[ost->source_index]) {
++        if(ost->ist) {
 +            av_bprintf(&buf,
-+                ",\"sync\":{\"index\":%d,\"stream\":%d}",
-+                ost->sync_ist->file_index,
-+                ost->sync_ist->st->index);
++                "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d}",
++                ost->ist->file_index,
++                ost->ist->st->index,
++                ost->file_index,
++                ost->index);
++            av_bprintf(&buf, ",\"copy\":%s", !ost->enc ? "true" : "false");
 +        }
 +
 +        av_bprintf(&buf, "}");
 +
 +    next_output:
-+        if(i != (nb_output_streams - 1)) {
++        if(ost_iter(ost) != NULL) {
 +            av_bprintf(&buf, ",");
 +        }
 +    }
@@ -672,11 +879,11 @@ index a55fd18f..ae82baf3 100644
 +    return;
 +}
 +
- /* open the muxer when all the streams are initialized */
- int of_check_init(OutputFile *of)
+ int mux_check_init(Muxer *mux)
  {
-@@ -251,6 +548,8 @@ int of_check_init(OutputFile *of)
-     av_dump_format(of->ctx, of->index, of->ctx->url, 1);
+     OutputFile *of = &mux->of;
+@@ -611,6 +946,8 @@ int mux_check_init(Muxer *mux)
+     av_dump_format(fc, of->index, fc->url, 1);
      nb_output_dumped++;
  
 +    print_json_outputs();
@@ -684,8 +891,31 @@ index a55fd18f..ae82baf3 100644
      if (sdp_filename || want_sdp) {
          ret = print_sdp();
          if (ret < 0) {
+diff --git a/fftools/ffmpeg_mux.h b/fftools/ffmpeg_mux.h
+index a2bb4dfc..11a726b9 100644
+--- a/fftools/ffmpeg_mux.h
++++ b/fftools/ffmpeg_mux.h
+@@ -84,6 +84,18 @@ typedef struct MuxStream {
+     int copy_initial_nonkeyframes;
+     int copy_prior_start;
+     int streamcopy_started;
++
++    uint64_t nb_packets;
++    uint64_t nb_keyframes;
++    // number of frames/samples sent to the encoder
++    uint64_t frames_encoded;
++    uint64_t samples_encoded;
++
++    int64_t last_keyframe_dts;
++    int64_t last_keyframe_pktnb;
++    int64_t nsamples_average;
++    double sum_framerate, min_framerate, max_framerate, avg_framerate;
++    double sum_gopsize, min_gopsize, max_gopsize, avg_gopsize;
+ } MuxStream;
+ 
+ typedef struct Muxer {
 diff --git a/fftools/ffmpeg_opt.c b/fftools/ffmpeg_opt.c
-index 6e18a4a2..572d5356 100644
+index 304471dd..5dee17be 100644
 --- a/fftools/ffmpeg_opt.c
 +++ b/fftools/ffmpeg_opt.c
 @@ -52,6 +52,7 @@
@@ -694,31 +924,31 @@ index 6e18a4a2..572d5356 100644
  #include "libavutil/pixfmt.h"
 +#include "libavutil/bprint.h"
  
- #define DEFAULT_PASS_LOGFILENAME_PREFIX "ffmpeg2pass"
- 
-@@ -171,6 +172,7 @@ int debug_ts          = 0;
+ const char *const opt_name_codec_names[]                      = {"c", "codec", "acodec", "vcodec", "scodec", "dcodec", NULL};
+ const char *const opt_name_frame_rates[]                      = {"r", NULL};
+@@ -82,6 +83,7 @@ int debug_ts          = 0;
  int exit_on_error     = 0;
  int abort_on_flags    = 0;
  int print_stats       = -1;
 +int print_jsonstats   = 1;
- int qp_hist           = 0;
  int stdin_interaction = 1;
  float max_error_rate  = 2.0/3;
-@@ -3547,6 +3549,111 @@ static int open_files(OptionGroupList *l, const char *inout,
+ char *filter_nbthreads;
+@@ -1296,6 +1298,112 @@ static int open_files(OptionGroupList *l, const char *inout,
      return 0;
  }
  
 +/**
 + * Print all inputs in JSON format
 + */
-+static void print_json_inputs()
++static void print_json_inputs(void)
 +{
++    AVBPrint buf;
++    int i, j;
++
 +    if(print_jsonstats != 1) {
 +        return;
 +    }
-+
-+    AVBPrint buf;
-+    int i, j;
 +
 +    av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
 +
@@ -735,7 +965,7 @@ index 6e18a4a2..572d5356 100644
 +        }
 +
 +        for(j = 0; j < f->nb_streams; j++) {
-+            InputStream *ist = input_streams[f->ist_index + j];
++            InputStream *ist = f->streams[j];
 +            AVCodecContext *dec = ist->dec_ctx;
 +            AVStream *st = ist->st;
 +            AVDictionaryEntry *lang =
@@ -755,8 +985,8 @@ index 6e18a4a2..572d5356 100644
 +                "\"url\":\"%s\",\"format\":\"%s\",\"index\":%d,\"stream\":%d,",
 +                url,
 +                ctx->iformat->name,
-+                i,
-+                j);
++                ist->file_index,
++                ist->index);
 +            av_bprintf(&buf,
 +                "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%" PRId64
 +                ",",
@@ -765,9 +995,10 @@ index 6e18a4a2..572d5356 100644
 +                dec->codec ? dec->codec->name : "unknown",
 +                dec->bit_rate / 1000);
 +            av_bprintf(&buf,
-+                "\"duration_sec\":%f,\"language\":\"%s\"",
++                "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d",
 +                duration,
-+                lang != NULL ? lang->value : "und");
++                lang != NULL ? lang->value : "und",
++                st->codecpar->profile, st->codecpar->level);
 +
 +            av_free(url);
 +
@@ -816,15 +1047,16 @@ index 6e18a4a2..572d5356 100644
  int ffmpeg_parse_options(int argc, char **argv)
  {
      OptionParseContext octx;
-@@ -3580,6 +3687,7 @@ int ffmpeg_parse_options(int argc, char **argv)
+@@ -1329,6 +1437,8 @@ int ffmpeg_parse_options(int argc, char **argv)
          goto fail;
      }
  
 +    print_json_inputs();
-     apply_sync_offsets();
- 
++
      /* create the complex filtergraphs */
-@@ -3806,6 +3914,8 @@ const OptionDef options[] = {
+     ret = init_complex_filters();
+     if (ret < 0) {
+@@ -1591,6 +1701,8 @@ const OptionDef options[] = {
          "enable automatic conversion filters globally" },
      { "stats",          OPT_BOOL,                                    { &print_stats },
          "print progress report during encoding", },
@@ -834,7 +1066,7 @@ index 6e18a4a2..572d5356 100644
          "set the period at which ffmpeg updates stats and -progress output", "time" },
      { "attach",         HAS_ARG | OPT_PERFILE | OPT_EXPERT |
 
-base-commit: 2bca71f4986725d7cf0d441e2f82a790d0a0c717
+base-commit: 8cda858db538d0c09cafcdfd68939da4d19f0175
 -- 
-2.37.1 (Apple Git-137.1)
+2.39.3 (Apple Git-145)
 

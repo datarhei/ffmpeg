@@ -2,11 +2,7 @@
 
 FFmpeg patches.
 
-## No PTS
-
-Ignore packets during streamcopy that don't have a valid PTS value.
-
-## HLS bitrate
+## HLS
 
 Calculate bandwidth estimate for the hls master manifest.
 
