@@ -1,10 +1,10 @@
-name: 'base:alpine-ffmpeg-rpi'
+name: "base:alpine-ffmpeg-rpi"
 
 on:
   workflow_dispatch:
   push:
     branches-ignore:
-      - '**'
+      - "**"
 
 jobs:
   docker:
@@ -15,17 +15,17 @@ jobs:
 
       - uses: cardinalby/export-env-action@v1
         with:
-          envFile: 'Build.alpine.env'    
-          export: 'true'
-          expandWithJobEnv: 'true'
-          expand: 'true'
+          envFile: "Build.alpine.env"
+          export: "true"
+          expandWithJobEnv: "true"
+          expand: "true"
 
       - uses: cardinalby/export-env-action@v1
         with:
-          envFile: 'Build.alpine.rpi.env'    
-          export: 'true'
-          expandWithJobEnv: 'true'
-          expand: 'true'
+          envFile: "Build.alpine.rpi.env"
+          export: "true"
+          expandWithJobEnv: "true"
+          expand: "true"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@master
@@ -75,6 +75,5 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-rpi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
-            datarhei/base:${{ env.OS_NAME }}-ffmpeg-rpi-latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new

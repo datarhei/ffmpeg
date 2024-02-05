@@ -1,10 +1,10 @@
-name: 'base:ubuntu-ffmpeg-cuda'
+name: "base:ubuntu-ffmpeg-cuda"
 
 on:
   workflow_dispatch:
   push:
     branches-ignore:
-      - '**'
+      - "**"
 
 jobs:
   docker:
@@ -12,20 +12,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        
-      - uses: cardinalby/export-env-action@v1
-        with:
-          envFile: 'Build.ubuntu.env'    
-          export: 'true'
-          expandWithJobEnv: 'true'
-          expand: 'true'
 
       - uses: cardinalby/export-env-action@v1
         with:
-          envFile: 'Build.ubuntu.cuda.env'    
-          export: 'true'
-          expandWithJobEnv: 'true'
-          expand: 'true'
+          envFile: "Build.ubuntu.env"
+          export: "true"
+          expandWithJobEnv: "true"
+          expand: "true"
+
+      - uses: cardinalby/export-env-action@v1
+        with:
+          envFile: "Build.ubuntu.cuda.env"
+          export: "true"
+          expandWithJobEnv: "true"
+          expand: "true"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@master
@@ -76,6 +76,5 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-cuda-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}-${{env.CUDA_VERSION}}
-            datarhei/base:${{ env.OS_NAME }}-ffmpeg-cuda-latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
