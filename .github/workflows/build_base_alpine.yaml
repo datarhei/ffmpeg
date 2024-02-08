@@ -62,6 +62,8 @@ jobs:
             OPUS_VERSION=${{ env.OPUS_VERSION }}
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
             ALSA_VERSION=${{ env.ALSA_VERSION }}
+            V4L_VERSION=${{ env.V4L_VERSION }}
+            FBDEV_VERSION=${{ env.FBDEV_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true

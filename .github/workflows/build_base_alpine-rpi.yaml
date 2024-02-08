@@ -69,6 +69,8 @@ jobs:
             OPUS_VERSION=${{ env.OPUS_VERSION }}
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
             ALSA_VERSION=${{ env.ALSA_VERSION }}
+            V4L_VERSION=${{ env.V4L_VERSION }}
+            FBDEV_VERSION=${{ env.FBDEV_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
             RPI_VERSION=${{ env.RPI_VERSION }}
           platforms: linux/arm64, linux/arm/v7

@@ -81,7 +81,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   ./configure \
   --extra-version=datarhei \
   --prefix="${SRC}" \
-  --extra-libs="-lpthread -lxml2 -lm -lz -lsupc++ -lstdc++ -lssl -lcrypto -lz -lc -ldl" \
+  --extra-libs="-lpthread -lxml2 -lm -lsupc++ -lstdc++ -lssl -lcrypto -lz -lc -ldl" \
   --enable-nonfree \
   --enable-gpl \
   --enable-version3 \
@@ -114,24 +114,29 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
 RUN mkdir -p /ffmpeg/lib && \
   cp \
   /usr/lib/libfreetype.so.6 \
-  /usr/lib/libbrotlidec.so.1 \
-  /usr/lib/libbrotlicommon.so.1 \
+  /usr/lib/libxml2.so.2 \
+  /usr/lib/libsrt.so.1.5 \
+  /usr/lib/liblzma.so.5 \
+  /usr/lib/libmp3lame.so.0 \
+  /usr/lib/libx264.so.164 \
+  /usr/lib/libx265.so.199 \
+  /usr/lib/libcurl.so.4 \
+  /usr/lib/libgcc_s.so.1 \
   /usr/lib/libbz2.so.1 \
   /usr/lib/libpng16.so.16 \
-  /usr/lib/libxml2.so.2 \
-  /usr/lib/liblzma.so.5 \
-  /usr/lib/libsrt.so.1.4 \
-  /usr/lib/libx264.so.163 \
-  /usr/lib/libx265.so.199 \
+  /usr/lib/libbrotlidec.so.1 \
+  /usr/lib/libstdc++.so.6 \
   /usr/lib/libnuma.so.1 \
-  /usr/lib/libvpx.so.7 \
-  /usr/lib/libmp3lame.so.0 \
+  /usr/lib/libcares.so.2 \
+  /usr/lib/libnghttp2.so.14 \
+  /usr/lib/libidn2.so.0 \
+  /usr/lib/libbrotlicommon.so.1 \
+  /usr/lib/libunistring.so.5 \
+  /usr/lib/libvpx.so.8 \
   /usr/lib/libopus.so.0 \
   /usr/lib/libvorbis.so.0 \
-  /usr/lib/libogg.so.0 \
   /usr/lib/libvorbisenc.so.2 \
-  /usr/lib/libgcc_s.so.1 \
-  /usr/lib/libstdc++.so.6 \
+  /usr/lib/libogg.so.0 \
   /ffmpeg/lib
 
 FROM $BUILD_IMAGE as final
@@ -149,7 +154,7 @@ RUN apk add --no-cache \
   alsa-lib \
   xf86-video-fbdev=${FBDEV_VERSION} \
   v4l-utils=${V4L_VERSION} \
-  raspberrypi-libs=${RPI_VERSION} && \
+  raspberrypi-userland=${RPI_VERSION} && \
   echo "/opt/vc/lib:/usr/local/lib:/usr/lib:/lib" > /etc/ld-musl-armhf.path && \
   ffmpeg -buildconf
 

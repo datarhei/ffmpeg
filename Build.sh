@@ -8,6 +8,27 @@ function source_env() {
   eval $(sed -e '/^\s*$/d' -e '/^\s*#/d' -e 's/=/="/' -e 's/$/"/' -e 's/^/export /' "${env}")
 }
 
+function build_default_native() {
+  source_env ./Build.alpine.env
+  docker build \
+    --build-arg BUILD_IMAGE=$OS_NAME:$OS_VERSION \
+    --build-arg FREETYPE_VERSION=$FREETYPE_VERSION \
+    --build-arg XML2_VERSION=$XML2_VERSION \
+    --build-arg SRT_VERSION=$SRT_VERSION \
+    --build-arg X264_VERSION=$X264_VERSION \
+    --build-arg X265_VERSION=$X265_VERSION \
+    --build-arg VPX_VERSION=$VPX_VERSION \
+    --build-arg LAME_VERSION=$LAME_VERSION \
+    --build-arg OPUS_VERSION=$OPUS_VERSION \
+    --build-arg VORBIS_VERSION=$VORBIS_VERSION \
+    --build-arg ALSA_VERSION=$ALSA_VERSION \
+    --build-arg V4L_VERSION=$V4L_VERSION \
+    --build-arg FBDEV_VERSION=$FBDEV_VERSION \
+    --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
+    -f Dockerfile.alpine \
+    -t datarhei/base:$OS_NAME-ffmpeg-$OS_VERSION-$FFMPEG_VERSION .
+}
+
 function build_default() {
   source_env ./Build.alpine.env
   # "--load" does not support multiple platforms
@@ -26,6 +47,8 @@ function build_default() {
     --build-arg OPUS_VERSION=$OPUS_VERSION \
     --build-arg VORBIS_VERSION=$VORBIS_VERSION \
     --build-arg ALSA_VERSION=$ALSA_VERSION \
+    --build-arg V4L_VERSION=$V4L_VERSION \
+    --build-arg FBDEV_VERSION=$FBDEV_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
     --platform linux/amd64 \
     -f Dockerfile.alpine \
@@ -54,6 +77,8 @@ function build_rpi() {
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
     --build-arg RPI_VERSION=$RPI_VERSION \
     --build-arg ALSA_VERSION=$ALSA_VERSION \
+    --build-arg V4L_VERSION=$V4L_VERSION \
+    --build-arg FBDEV_VERSION=$FBDEV_VERSION \
     --platform linux/arm64 \
     -f Dockerfile.alpine.rpi \
     -t datarhei/base:$OS_NAME-ffmpeg-rpi-$OS_VERSION-$FFMPEG_VERSION .
@@ -108,11 +133,13 @@ function build_vaapi() {
 
 main() {
   if [[ $# == 0 ]]; then
-    echo "Options available: default, rpi, cuda, vaapi"
+    echo "Options available: default, default_native, rpi, cuda, vaapi"
     exit 0
   else
     if [[ $1 == "default" ]]; then
       build_default
+    elif [[ $1 == "default_native" ]]; then
+      build_default_native
     elif [[ $1 == "rpi" ]]; then
       build_rpi
     elif [[ $1 == "cuda" ]]; then
