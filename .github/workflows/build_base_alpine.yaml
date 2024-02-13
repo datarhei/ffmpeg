@@ -1,10 +1,10 @@
-name: 'base:alpine-ffmpeg'
+name: "base:alpine-ffmpeg"
 
 on:
   workflow_dispatch:
   push:
     branches-ignore:
-      - '**'
+      - "**"
 
 jobs:
   docker:
@@ -12,13 +12,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        
+
       - uses: cardinalby/export-env-action@v1
         with:
-          envFile: 'Build.alpine.env'    
-          export: 'true'
-          expandWithJobEnv: 'true'
-          expand: 'true'
+          envFile: "Build.alpine.env"
+          export: "true"
+          expandWithJobEnv: "true"
+          expand: "true"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@master
@@ -66,6 +66,7 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |
+            datarhei/base:ffmpeg${{ env.FFMPEG_VERSION }}-${{ env.OS_NAME }}${{ env.OS_VERSION }}
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-latest
           cache-from: type=local,src=/tmp/.buildx-cache
