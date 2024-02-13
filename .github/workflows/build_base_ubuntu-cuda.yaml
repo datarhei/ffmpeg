@@ -1,4 +1,4 @@
-name: "base:ubuntu-ffmpeg-cuda"
+name: "base:ffmpeg-cuda-ubuntu"
 
 on:
   workflow_dispatch:
@@ -76,5 +76,6 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-cuda-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}-${{env.CUDA_VERSION}}
+            datarhei/base:ffmpeg${{ env.FFMPEG_VERSION }}-cuda-${{ env.OS_NAME }}${{ env.OS_VERSION }}-cuda${{env.CUDA_VERSION}}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new

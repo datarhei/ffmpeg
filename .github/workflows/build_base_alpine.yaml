@@ -1,4 +1,4 @@
-name: "base:alpine-ffmpeg"
+name: "base:ffmpeg-alpine"
 
 on:
   workflow_dispatch:
@@ -69,5 +69,6 @@ jobs:
           push: true
           tags: |
             datarhei/base:${{ env.OS_NAME }}-ffmpeg-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
+            datarhei/base:ffmpeg${{ env.FFMPEG_VERSION }}-${{ env.OS_NAME }}${{ env.OS_VERSION }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
