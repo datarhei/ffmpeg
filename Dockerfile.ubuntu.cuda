@@ -52,26 +52,26 @@ RUN mkdir -p /dist && cd /dist && \
 
 # install x265
 RUN mkdir -p /dist && cd /dist && \
-  curl -OLk https://github.com/videolan/x265/archive/refs/tags/${X265_VERSION}.tar.gz && \
-  tar xfvz ${X265_VERSION}.tar.gz && \
-  rm ${X265_VERSION}.tar.gz && \
-  cd x265-${X265_VERSION}/build/linux \
+  curl -OLk https://bitbucket.org/multicoreware/x265_git/downloads/x265_${X265_VERSION}.tar.gz && \
+  tar xfvz x265_${X265_VERSION}.tar.gz && \
+  rm x265_${X265_VERSION}.tar.gz && \
+  cd x265_${X265_VERSION}/build/linux \
   sed -i "/-DEXTRA_LIB/ s/$/ -DCMAKE_INSTALL_SRC=\${SRC}/" multilib.sh && \
   sed -i "/^cmake/ s/$/ -DENABLE_CLI=OFF/" multilib.sh && \
   ./multilib.sh && \
-  make -C 8bit install && \
+  make -j$(nproc) -C 8bit install && \
   rm -rf ${DIR}
 
 # install opus
 RUN mkdir -p /dist && cd /dist && \
-  curl -OLk https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz && \
+  curl -OLk https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz && \
   tar xfvz opus-${OPUS_VERSION}.tar.gz && \
   rm opus-${OPUS_VERSION}.tar.gz && \
   cd opus-${OPUS_VERSION} && \
   autoreconf -fiv && \
   ./configure --prefix="${SRC}" \
   --enable-shared && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install ogg
@@ -82,7 +82,7 @@ RUN mkdir -p /dist && cd /dist && \
   cd libogg-${OGG_VERSION} && \
   ./configure --prefix="${SRC}" \
   --enable-shared  && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install vorbis
@@ -93,7 +93,7 @@ RUN mkdir -p /dist && cd /dist && \
   cd libvorbis-${VORBIS_VERSION} && \
   ./configure --prefix="${SRC}" --with-ogg="${SRC}" \
   --enable-shared && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install libmp3lame
@@ -126,7 +126,7 @@ RUN mkdir -p /dist && cd /dist && \
   --disable-examples \
   --disable-docs \
   --disable-install-bins && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install freetype
@@ -138,7 +138,7 @@ RUN mkdir -p /dist && cd /dist && \
   ./configure --prefix="${SRC}" \
   --disable-static \
   --enable-shared && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install srt
@@ -153,7 +153,7 @@ RUN mkdir -p /dist && cd /dist && \
   -DCMAKE_INSTALL_INCLUDEDIR="$SRC/include" \
   -DCMAKE_INSTALL_LIBDIR="$SRC/lib" \
   -DCMAKE_INSTALL_SRC="$SRC" && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install libxml2
@@ -166,7 +166,7 @@ RUN mkdir -p /dist && cd /dist && \
   --with-ftp=no \
   --with-http=no \
   --with-python=no && \
-  make && \
+  make -j$(nproc) && \
   make install
 
 # install and patch ffmpeg
