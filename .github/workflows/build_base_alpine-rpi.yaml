@@ -1,4 +1,4 @@
-name: "base:alpine-ffmpeg-rpi"
+name: "base:ffmpeg-rpi-alpine"
 
 on:
   workflow_dispatch:
@@ -13,14 +13,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: cardinalby/export-env-action@v1
+      - uses: cardinalby/export-env-action@v2
         with:
           envFile: "Build.alpine.env"
           export: "true"
           expandWithJobEnv: "true"
           expand: "true"
 
-      - uses: cardinalby/export-env-action@v1
+      - uses: cardinalby/export-env-action@v2
         with:
           envFile: "Build.alpine.rpi.env"
           export: "true"

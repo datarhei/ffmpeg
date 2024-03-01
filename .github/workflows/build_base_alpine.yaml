@@ -1,4 +1,4 @@
-name: "base:alpine-ffmpeg"
+name: "base:ffmpeg-alpine"
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: cardinalby/export-env-action@v1
+      - uses: cardinalby/export-env-action@v2
         with:
           envFile: "Build.alpine.env"
           export: "true"
