@@ -1,17 +1,17 @@
-From d65f402f0102c34f8411757a118509e3cfbd4012 Mon Sep 17 00:00:00 2001
+From dfba5a1fd2af823ee080ea192aa54c955054a3e5 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 10 Jan 2024 16:06:17 +0100
-Subject: [PATCH v27] JSON progress report (ffmpeg 6.1)
+Date: Fri, 1 Mar 2024 11:36:05 +0100
+Subject: [PATCH v28] JSON progress report (ffmpeg 6.1)
 
 ---
  fftools/ffmpeg.c       | 198 +++++++++++++++++++++++-
  fftools/ffmpeg.h       |   1 +
  fftools/ffmpeg_demux.c | 118 ++++++---------
  fftools/ffmpeg_demux.h | 121 +++++++++++++++
- fftools/ffmpeg_mux.c   | 337 +++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_mux.c   | 335 +++++++++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_mux.h   |  12 ++
  fftools/ffmpeg_opt.c   | 112 ++++++++++++++
- 7 files changed, 823 insertions(+), 76 deletions(-)
+ 7 files changed, 821 insertions(+), 76 deletions(-)
  create mode 100644 fftools/ffmpeg_demux.h
 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
@@ -521,7 +521,7 @@ index 00000000..937f8a22
 +}
 \ No newline at end of file
 diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
-index 7a924dba..0617b7f1 100644
+index 7a924dba..710f0ac6 100644
 --- a/fftools/ffmpeg_mux.c
 +++ b/fftools/ffmpeg_mux.c
 @@ -31,6 +31,8 @@
@@ -585,7 +585,7 @@ index 7a924dba..0617b7f1 100644
      pkt->stream_index = ost->index;
  
      if (debug_ts) {
-@@ -587,6 +632,296 @@ fail:
+@@ -587,6 +632,294 @@ fail:
      return ret;
  }
  
@@ -706,8 +706,6 @@ index 7a924dba..0617b7f1 100644
 +            av_dict_get(st->metadata, "language", NULL, 0);
 +        AVCodecContext *enc = ost->enc_ctx ? ost->enc_ctx : ost->ist->dec_ctx;
 +        char *url = NULL;
-+
-+        fprintf(stderr, "*enc is NULL: %s\n", enc == NULL ? "true" : "false");
 +
 +        if(av_escape(&url,
 +               ctx->url,
@@ -882,7 +880,7 @@ index 7a924dba..0617b7f1 100644
  int mux_check_init(Muxer *mux)
  {
      OutputFile *of = &mux->of;
-@@ -611,6 +946,8 @@ int mux_check_init(Muxer *mux)
+@@ -611,6 +944,8 @@ int mux_check_init(Muxer *mux)
      av_dump_format(fc, of->index, fc->url, 1);
      nb_output_dumped++;
  
