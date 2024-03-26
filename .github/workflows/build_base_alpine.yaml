@@ -53,6 +53,8 @@ jobs:
             LAME_VERSION=${{ env.LAME_VERSION }}
             OPUS_VERSION=${{ env.OPUS_VERSION }}
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
+            DAV1D_VERSION=${{ env.DAV1D_VERSION }}
+            RAV1E_VERSION=${{ env.RAV1E_VERSION }}
             ALSA_VERSION=${{ env.ALSA_VERSION }}
             V4L_VERSION=${{ env.V4L_VERSION }}
             FBDEV_VERSION=${{ env.FBDEV_VERSION }}
