@@ -35,7 +35,41 @@ RUN apt-get update -y && \
   libtool \
   autoconf \
   libv4l-dev \
-  libasound2-dev
+  libasound2-dev \
+  rust-all \
+  meson
+
+# install libxml2
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://gitlab.gnome.org/GNOME/libxml2/-/archive/v${XML2_VERSION}/libxml2-v${XML2_VERSION}.tar.gz && \
+  tar xfvz libxml2-v${XML2_VERSION}.tar.gz && \
+  rm libxml2-v${XML2_VERSION}.tar.gz && \
+  cd libxml2-v${XML2_VERSION} && \
+  ./autogen.sh --prefix="${SRC}" \
+  --with-ftp=no \
+  --with-http=no \
+  --with-python=no && \
+  make -j$(nproc) && \
+  make install
+
+# install libdav1d
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://code.videolan.org/videolan/dav1d/-/archive/${DAV1D_VERSION}/dav1d-${DAV1D_VERSION}.tar.gz && \
+  tar xfvz dav1d-${DAV1D_VERSION}.tar.gz && \
+  rm dav1d-${DAV1D_VERSION}.tar.gz && \
+  cd dav1d-${DAV1D_VERSION} && \
+  mkdir build && cd build && \
+  meson setup .. && \
+  ninja && ninja install
+
+# install librav1e
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://github.com/xiph/rav1e/archive/refs/tags/v${RAV1E_VERSION}.tar.gz && \
+  tar xfvz v${RAV1E_VERSION}.tar.gz && \
+  rm v${RAV1E_VERSION}.tar.gz && \
+  cd rav1e-${RAV1E_VERSION} && \
+  cargo install cargo-c && \
+  cargo cinstall --release
 
 # install x264
 RUN mkdir -p /dist && cd /dist && \
@@ -156,19 +190,6 @@ RUN mkdir -p /dist && cd /dist && \
   make -j$(nproc) && \
   make install
 
-# install libxml2
-RUN mkdir -p /dist && cd /dist && \
-  curl -OLk https://github.com/GNOME/libxml2/archive/refs/tags/v${XML2_VERSION}.tar.gz && \
-  tar xfvz v${XML2_VERSION}.tar.gz && \
-  rm v${XML2_VERSION}.tar.gz && \
-  cd libxml2-${XML2_VERSION} && \
-  ./autogen.sh --prefix="${SRC}" \
-  --with-ftp=no \
-  --with-http=no \
-  --with-python=no && \
-  make -j$(nproc) && \
-  make install
-
 # install and patch ffmpeg
 RUN mkdir -p /dist && cd /dist && \
   curl -OLk http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
@@ -210,6 +231,8 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libmp3lame \
   --enable-libopus \
   --enable-libvorbis \
+  --enable-libdav1d \
+  --enable-librav1e \
   --disable-ffplay \
   --disable-ffprobe \
   --disable-debug \
