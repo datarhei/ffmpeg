@@ -4,15 +4,17 @@ ARG DEPLOY_IMAGE=ubuntu:20.04
 FROM $BUILD_IMAGE as builder
 
 ARG FREETYPE_VERSION=2.10.4
-ENV XML2_VERSION=2.9.14
+ARG XML2_VERSION=2.9.14
 ARG SRT_VERSION=1.4.2
 ARG X264_VERSION=stable
 ARG X265_VERSION=3.4
-ENV VPX_VERSION=1.11.0
+ARG VPX_VERSION=1.11.0
 ARG LAME_VERSION=3.100
 ARG OPUS_VERSION=1.3.1
-ENV OGG_VERSION=1.3.5
+ARG OGG_VERSION=1.3.5
 ARG VORBIS_VERSION=1.3.7
+ARG RAV1E_VERSION=0.7.1
+ARG DAV1D_VERSION=1.4.1
 ARG FFMPEG_VERSION=4.4.2
 
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
@@ -37,7 +39,41 @@ RUN apt-get update -y && \
   libva2 \
   libva-dev \
   i965-va-driver \
-  libasound2-dev
+  libasound2-dev \
+  rust-all \
+  meson
+
+# install libxml2
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://gitlab.gnome.org/GNOME/libxml2/-/archive/v${XML2_VERSION}/libxml2-v${XML2_VERSION}.tar.gz && \
+  tar xfvz libxml2-v${XML2_VERSION}.tar.gz && \
+  rm libxml2-v${XML2_VERSION}.tar.gz && \
+  cd libxml2-v${XML2_VERSION} && \
+  ./autogen.sh --prefix="${SRC}" \
+  --with-ftp=no \
+  --with-http=no \
+  --with-python=no && \
+  make -j$(nproc) && \
+  make install
+
+# install libdav1d
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://code.videolan.org/videolan/dav1d/-/archive/${DAV1D_VERSION}/dav1d-${DAV1D_VERSION}.tar.gz && \
+  tar xfvz dav1d-${DAV1D_VERSION}.tar.gz && \
+  rm dav1d-${DAV1D_VERSION}.tar.gz && \
+  cd dav1d-${DAV1D_VERSION} && \
+  mkdir build && cd build && \
+  meson setup .. && \
+  ninja && ninja install
+
+# install librav1e
+RUN mkdir -p /dist && cd /dist && \
+  curl -OLk https://github.com/xiph/rav1e/archive/refs/tags/v${RAV1E_VERSION}.tar.gz && \
+  tar xfvz v${RAV1E_VERSION}.tar.gz && \
+  rm v${RAV1E_VERSION}.tar.gz && \
+  cd rav1e-${RAV1E_VERSION} && \
+  cargo install cargo-c && \
+  cargo cinstall --release
 
 # install x264
 RUN mkdir -p /dist && cd /dist && \
@@ -158,19 +194,6 @@ RUN mkdir -p /dist && cd /dist && \
   make -j$(nproc) && \
   make install
 
-# install libxml2
-RUN mkdir -p /dist && cd /dist && \
-  curl -OLk https://github.com/GNOME/libxml2/archive/refs/tags/v${XML2_VERSION}.tar.gz && \
-  tar xfvz v${XML2_VERSION}.tar.gz && \
-  rm v${XML2_VERSION}.tar.gz && \
-  cd libxml2-${XML2_VERSION} && \
-  ./autogen.sh --prefix="${SRC}" \
-  --with-ftp=no \
-  --with-http=no \
-  --with-python=no && \
-  make -j$(nproc) && \
-  make install
-
 # install and patch ffmpeg
 RUN mkdir -p /dist && cd /dist && \
   curl -OLk http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
@@ -203,6 +226,8 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libmp3lame \
   --enable-libopus \
   --enable-libvorbis \
+  --enable-libdav1d \
+  --enable-librav1e \
   --disable-ffplay \
   --disable-ffprobe \
   --disable-debug \
@@ -222,14 +247,12 @@ RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/ffmpeg.conf && \
   apt-get install -y \
   v4l-utils \
   fbset \
+  libssl \
   libva-drm2 \
   libva2 \
   i965-va-driver \
   libasound2-dev && \
   ffmpeg -buildconf
-
-ENV NVIDIA_VISIBLE_DEVICES all
-ENV NVIDIA_DRIVER_CAPABILITIES compute,video,utility
 
 WORKDIR /tmp
 ENTRYPOINT ["/usr/local/bin/ffmpeg"]

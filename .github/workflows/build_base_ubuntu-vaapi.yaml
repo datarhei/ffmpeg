@@ -61,6 +61,8 @@ jobs:
             LAME_VERSION=${{ env.LAME_VERSION }}
             OPUS_VERSION=${{ env.OPUS_VERSION }}
             VORBIS_VERSION=${{ env.VORBIS_VERSION }}
+            DAV1D_VERSION=${{ env.DAV1D_VERSION }}
+            RAV1E_VERSION=${{ env.RAV1E_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
           platforms: linux/amd64
           push: true
