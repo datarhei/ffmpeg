@@ -1,25 +1,616 @@
-From edd2adb73962bfa91080b785095e15f5f7eaabc7 Mon Sep 17 00:00:00 2001
+From 3cc69c7b05ef1dfa256e12dcb354f83313a93c75 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Fri, 26 Jul 2024 17:03:28 +0200
-Subject: [PATCH v29] JSON progress report (ffmpeg 7.0)
+Date: Fri, 23 Aug 2024 17:25:02 +0200
+Subject: [PATCH v30] JSON progress report (ffmpeg 7.0)
 
 ---
+ README.PROGRESS.md      | 583 +++++++++++++++++++++++++++++++++++++
  fftools/Makefile        |   1 +
- fftools/ffmpeg.c        |  37 ++-
+ fftools/ffmpeg.c        |  35 ++-
  fftools/ffmpeg.h        |   1 +
  fftools/ffmpeg_demux.c  | 146 +++-------
  fftools/ffmpeg_demux.h  | 160 +++++++++++
  fftools/ffmpeg_filter.c |   6 +
- fftools/ffmpeg_json.c   | 607 ++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_json.c   | 624 ++++++++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_json.h   |  16 ++
  fftools/ffmpeg_mux.c    |  50 +++-
  fftools/ffmpeg_mux.h    |  19 +-
  fftools/ffmpeg_opt.c    |   7 +
- 11 files changed, 940 insertions(+), 110 deletions(-)
+ 12 files changed, 1538 insertions(+), 110 deletions(-)
+ create mode 100644 README.PROGRESS.md
  create mode 100644 fftools/ffmpeg_demux.h
  create mode 100644 fftools/ffmpeg_json.c
  create mode 100644 fftools/ffmpeg_json.h
 
+diff --git a/README.PROGRESS.md b/README.PROGRESS.md
+new file mode 100644
+index 00000000..f5e703fa
+--- /dev/null
++++ b/README.PROGRESS.md
+@@ -0,0 +1,583 @@
++# Progress
++
++Detailed input, mapping, output, and progress outputs as JSON.
++
++Instead of parsing the standard FFmpeg output in order to figure out what streams are available, how they get transformed to the outputs, and what the current
++progress is, this patch prints these information in a structured JSON. Each JSON is prefixed:
++
++| Prefix           | Description                                             |
++| ---------------- | ------------------------------------------------------- |
++| ffmpeg.inputs:   | The list of inputs                                      |
++| ffmpeg.mapping:  | The filter graph and the mapping from inputs to outputs |
++| ffmpeg.outputs:  | The list of outputs                                     |
++| ffmpeg.progress: | The current progress for each input and output          |
++
++## Examples
++
++First we have to create some example files in order demonstrate the output.
++
++`ffmpeg -f lavfi -i testsrc2=rate=25:size=640x360 -map 0:0 -codec:v libx264 -preset:v ultrafast -r 25 -pix_fmt yuv420p -g 50 -f mp4 -t 10 example_noaudio.mp4`
++
++`ffmpeg -f lavfi -i testsrc2=rate=25:size=640x360 -f lavfi -i anullsrc=r=44100:cl=stereo -map 0:0 -map 1:0 -codec:v libx264 -preset:v ultrafast -r 25 -pix_fmt yuv420p -g 50 -codec:a aac -f mp4 -t 10 example_audio.mp4`
++
++`ffmpeg -f lavfi -i testsrc2=rate=25:size=640x360 -map 0:0 -vframes 1 -f image2 -update 1 example.jpg`
++
++No we can see, what will be the different JSON outputs.
++
++### Probe
++
++If no outputs are given, only the inputs will get printed `ffmpeg -i example_audio.mp4`:
++
++`ffmpeg.inputs:[{"url":"example_audio.mp4","format":"mov,mp4,m4a,3gp,3g2,mj2","index":0,"stream":0,"type":"video","codec":"h264","coder":"h264","bitrate_kbps":1822,"duration_sec":10.005000,"language":"und","profile":578,"level":30,"fps":25.000000,"pix_fmt":"yuv420p","width":640,"height":360},{"url":"example_audio.mp4","format":"mov,mp4,m4a,3gp,3g2,mj2","index":0,"stream":1,"type":"audio","codec":"aac","coder":"aac","bitrate_kbps":2,"duration_sec":10.005000,"language":"und","profile":1,"level":-99,"sampling_hz":44100,"layout":"stereo","channels":2}]`
++
++### Stream mapping
++
++With outputs, the stream mapping will get printed.
++
++`ffmpeg -i example_audio.mp4 -f null -`
++
++```json
++{
++    "graphs": [],
++    "mapping": [
++        {
++            "input": {
++                "index": 0,
++                "stream": 0
++            },
++            "output": {
++                "index": 0,
++                "stream": 0
++            },
++            "copy": false
++        },
++        {
++            "input": {
++                "index": 0,
++                "stream": 1
++            },
++            "output": {
++                "index": 0,
++                "stream": 1
++            },
++            "copy": false
++        }
++    ]
++}
++```
++
++`ffmpeg -i example_audio.mp4 -codec copy -f null - `
++
++```json
++{
++    "graphs": [],
++    "mapping": [
++        { "input": { "index": 0, "stream": 0 }, "output": { "index": 0, "stream": 0 }, "copy": true },
++        { "input": { "index": 0, "stream": 1 }, "output": { "index": 0, "stream": 1 }, "copy": true }
++    ]
++}
++```
++
++`ffmpeg -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null - `
++
++```json
++{
++    "graphs": [],
++    "mapping": [
++        { "input": { "index": 0, "stream": 0 }, "output": { "index": 0, "stream": 0 }, "copy": false },
++        { "input": { "index": 0, "stream": 1 }, "output": { "index": 0, "stream": 1 }, "copy": true }
++    ]
++}
++```
++
++Or a more complex stream mapping with filters:
++
++`ffmpeg -i example_audio.mp4 -i example.jpg -filter_complex "[0:v]split=2[main][in1];[main]split=2[in2][in3];[in1]boxblur[blur],[blur][1:v]overlay[out1];[in2]negate[out2];[in3]yadif[out3];[out2]split=2[out20][out21]" -map "[out1]" -map "[out3]" -map "[out20]" -map "[out21]" -map 0:a -af "dcshift" -f matroska -y /dev/null`
++
++```json
++{
++    "graphs": [
++        {
++            "index": 0,
++            "graph": [
++                {
++                    "src_id": "600002accc60",
++                    "src_name": "Parsed_split_0",
++                    "src_filter": "split",
++                    "dst_id": "600002accd10",
++                    "dst_name": "Parsed_split_1",
++                    "dst_filter": "split",
++                    "inpad": "output0",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002accc60",
++                    "src_name": "Parsed_split_0",
++                    "src_filter": "split",
++                    "dst_id": "600002accdc0",
++                    "dst_name": "Parsed_boxblur_2",
++                    "dst_filter": "boxblur",
++                    "inpad": "output1",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002accd10",
++                    "src_name": "Parsed_split_1",
++                    "src_filter": "split",
++                    "dst_id": "600002accf20",
++                    "dst_name": "Parsed_negate_4",
++                    "dst_filter": "negate",
++                    "inpad": "output0",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002accd10",
++                    "src_name": "Parsed_split_1",
++                    "src_filter": "split",
++                    "dst_id": "600002accfd0",
++                    "dst_name": "Parsed_yadif_5",
++                    "dst_filter": "yadif",
++                    "inpad": "output1",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002accdc0",
++                    "src_name": "Parsed_boxblur_2",
++                    "src_filter": "boxblur",
++                    "dst_id": "600002acce70",
++                    "dst_name": "Parsed_overlay_3",
++                    "dst_filter": "overlay",
++                    "inpad": "default",
++                    "outpad": "main",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acce70",
++                    "src_name": "Parsed_overlay_3",
++                    "src_filter": "overlay",
++                    "dst_id": "600002acd3f0",
++                    "dst_name": "format",
++                    "dst_filter": "format",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002accf20",
++                    "src_name": "Parsed_negate_4",
++                    "src_filter": "negate",
++                    "dst_id": "600002acd130",
++                    "dst_name": "Parsed_split_6",
++                    "dst_filter": "split",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002accfd0",
++                    "src_name": "Parsed_yadif_5",
++                    "src_filter": "yadif",
++                    "dst_id": "600002acd550",
++                    "dst_name": "format",
++                    "dst_filter": "format",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/25600",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd130",
++                    "src_name": "Parsed_split_6",
++                    "src_filter": "split",
++                    "dst_id": "600002acd6b0",
++                    "dst_name": "format",
++                    "dst_filter": "format",
++                    "inpad": "output0",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd130",
++                    "src_name": "Parsed_split_6",
++                    "src_filter": "split",
++                    "dst_id": "600002acd810",
++                    "dst_name": "format",
++                    "dst_filter": "format",
++                    "inpad": "output1",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd1e0",
++                    "src_name": "graph 0 input from stream 0:0",
++                    "src_filter": "buffer",
++                    "dst_id": "600002accc60",
++                    "dst_name": "Parsed_split_0",
++                    "dst_filter": "split",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd290",
++                    "src_name": "graph 0 input from stream 1:0",
++                    "src_filter": "buffer",
++                    "dst_id": "600002acd8c0",
++                    "dst_name": "auto_scale_0",
++                    "dst_filter": "scale",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/25",
++                    "type": "video",
++                    "format": "yuvj420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd3f0",
++                    "src_name": "format",
++                    "src_filter": "format",
++                    "dst_id": "600002acd340",
++                    "dst_name": "out_0_0",
++                    "dst_filter": "buffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd550",
++                    "src_name": "format",
++                    "src_filter": "format",
++                    "dst_id": "600002acd4a0",
++                    "dst_name": "out_0_1",
++                    "dst_filter": "buffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/25600",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd6b0",
++                    "src_name": "format",
++                    "src_filter": "format",
++                    "dst_id": "600002acd600",
++                    "dst_name": "out_0_2",
++                    "dst_filter": "buffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd810",
++                    "src_name": "format",
++                    "src_filter": "format",
++                    "dst_id": "600002acd760",
++                    "dst_name": "out_0_3",
++                    "dst_filter": "buffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "600002acd8c0",
++                    "src_name": "auto_scale_0",
++                    "src_filter": "scale",
++                    "dst_id": "600002acce70",
++                    "dst_name": "Parsed_overlay_3",
++                    "dst_filter": "overlay",
++                    "inpad": "default",
++                    "outpad": "overlay",
++                    "timebase": "1/25",
++                    "type": "video",
++                    "format": "yuva420p",
++                    "width": 640,
++                    "height": 360
++                }
++            ]
++        }
++    ],
++    "mapping": [
++        {
++            "input": {
++                "index": 0,
++                "stream": 0
++            },
++            "graph": {
++                "index": 0,
++                "id": "600002acd1e0",
++                "name": "graph 0 input from stream 0:0"
++            },
++            "output": null
++        },
++        {
++            "input": {
++                "index": 1,
++                "stream": 0
++            },
++            "graph": {
++                "index": 0,
++                "id": "600002acd290",
++                "name": "graph 0 input from stream 1:0"
++            },
++            "output": null
++        },
++        {
++            "input": null,
++            "graph": {
++                "index": 0,
++                "id": "600002acd340",
++                "name": "out_0_0"
++            },
++            "output": {
++                "index": 0,
++                "stream": 0
++            }
++        },
++        {
++            "input": null,
++            "graph": {
++                "index": 0,
++                "id": "600002acd4a0",
++                "name": "out_0_1"
++            },
++            "output": {
++                "index": 0,
++                "stream": 1
++            }
++        },
++        {
++            "input": null,
++            "graph": {
++                "index": 0,
++                "id": "600002acd600",
++                "name": "out_0_2"
++            },
++            "output": {
++                "index": 0,
++                "stream": 2
++            }
++        },
++        {
++            "input": null,
++            "graph": {
++                "index": 0,
++                "id": "600002acd760",
++                "name": "out_0_3"
++            },
++            "output": {
++                "index": 0,
++                "stream": 3
++            }
++        },
++        {
++            "input": {
++                "index": 0,
++                "stream": 1
++            },
++            "output": {
++                "index": 0,
++                "stream": 4
++            },
++            "copy": false
++        }
++    ]
++}
++```
++
++### Outputs
++
++```json
++[
++    {
++        "url": "/dev/null",
++        "format": "matroska",
++        "index": 0,
++        "stream": 0,
++        "type": "video",
++        "codec": "h264",
++        "coder": "unknown",
++        "bitrate_kbps": 0,
++        "duration_sec": 0.0,
++        "language": "und",
++        "profile": -99,
++        "level": -99,
++        "fps": 25.0,
++        "pix_fmt": "yuv420p",
++        "width": 640,
++        "height": 360
++    },
++    {
++        "url": "/dev/null",
++        "format": "matroska",
++        "index": 0,
++        "stream": 1,
++        "type": "video",
++        "codec": "h264",
++        "coder": "unknown",
++        "bitrate_kbps": 0,
++        "duration_sec": 0.0,
++        "language": "und",
++        "profile": -99,
++        "level": -99,
++        "fps": 25.0,
++        "pix_fmt": "yuv420p",
++        "width": 640,
++        "height": 360
++    },
++    {
++        "url": "/dev/null",
++        "format": "matroska",
++        "index": 0,
++        "stream": 2,
++        "type": "video",
++        "codec": "h264",
++        "coder": "unknown",
++        "bitrate_kbps": 0,
++        "duration_sec": 0.0,
++        "language": "und",
++        "profile": -99,
++        "level": -99,
++        "fps": 25.0,
++        "pix_fmt": "yuv420p",
++        "width": 640,
++        "height": 360
++    },
++    {
++        "url": "/dev/null",
++        "format": "matroska",
++        "index": 0,
++        "stream": 3,
++        "type": "video",
++        "codec": "h264",
++        "coder": "unknown",
++        "bitrate_kbps": 0,
++        "duration_sec": 0.0,
++        "language": "und",
++        "profile": -99,
++        "level": -99,
++        "fps": 25.0,
++        "pix_fmt": "yuv420p",
++        "width": 640,
++        "height": 360
++    },
++    {
++        "url": "/dev/null",
++        "format": "matroska",
++        "index": 0,
++        "stream": 4,
++        "type": "audio",
++        "codec": "ac3",
++        "coder": "unknown",
++        "bitrate_kbps": 192,
++        "duration_sec": 0.0,
++        "language": "und",
++        "profile": -99,
++        "level": -99,
++        "sampling_hz": 44100,
++        "layout": "stereo",
++        "channels": 2
++    }
++]
++```
++
++### Progress
++
++```json
++{
++    "inputs": [
++        { "index": 0, "stream": 0, "framerate": { "min": 25.0, "max": 25.0, "avg": 25.0 }, "gop": { "min": 50.0, "max": 50.0, "avg": 50.0 }, "frame": 250, "keyframe": 5, "packet": 250, "size_kb": 2225, "size_bytes": 2278562 },
++        { "index": 0, "stream": 1, "framerate": { "min": 43.066, "max": 43.068, "avg": 43.066 }, "gop": { "min": 1.0, "max": 1.0, "avg": 1.0 }, "frame": 432, "keyframe": 432, "packet": 432, "size_kb": 3, "size_bytes": 2622 },
++        { "index": 1, "stream": 0, "framerate": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "gop": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "frame": 1, "keyframe": 1, "packet": 1, "size_kb": 17, "size_bytes": 17150 }
++    ],
++    "outputs": [
++        { "index": 0, "stream": 0, "framerate": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "gop": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "frame": 250, "keyframe": 1, "packet": 250, "q": -1.0, "size_kb": 20, "size_bytes": 20124, "extradata_size_bytes": 0 },
++        {
++            "index": 0,
++            "stream": 1,
++            "framerate": { "min": 0.0, "max": 0.0, "avg": 0.0 },
++            "gop": { "min": 0.0, "max": 0.0, "avg": 0.0 },
++            "frame": 250,
++            "keyframe": 1,
++            "packet": 250,
++            "q": -1.0,
++            "size_kb": 1014,
++            "size_bytes": 1038752,
++            "extradata_size_bytes": 0
++        },
++        { "index": 0, "stream": 2, "framerate": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "gop": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "frame": 250, "keyframe": 1, "packet": 250, "q": -1.0, "size_kb": 882, "size_bytes": 903638, "extradata_size_bytes": 0 },
++        { "index": 0, "stream": 3, "framerate": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "gop": { "min": 0.0, "max": 0.0, "avg": 0.0 }, "frame": 250, "keyframe": 1, "packet": 250, "q": -1.0, "size_kb": 882, "size_bytes": 903638, "extradata_size_bytes": 0 },
++        { "index": 0, "stream": 4, "framerate": { "min": 28.571, "max": 29.412, "avg": 28.715 }, "gop": { "min": 1.0, "max": 1.0, "avg": 1.0 }, "frame": 288, "keyframe": 288, "packet": 288, "size_kb": 235, "size_bytes": 240744, "extradata_size_bytes": 0 }
++    ],
++    "frame": 250,
++    "packet": 250,
++    "q": -1.0,
++    "size_kb": 3034,
++    "size_bytes": 3106896,
++    "time": "0h0m9.92s",
++    "speed": 15.9,
++    "dup": 0,
++    "drop": 0
++}
++```
 diff --git a/fftools/Makefile b/fftools/Makefile
 index 083a1368..adbf81ee 100644
 --- a/fftools/Makefile
@@ -33,7 +624,7 @@ index 083a1368..adbf81ee 100644
      fftools/sync_queue.o        \
      fftools/thread_queue.o      \
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index d4e5f978..05b2acaf 100644
+index d4e5f978..bc5df866 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
 @@ -99,8 +99,11 @@
@@ -100,7 +691,7 @@ index d4e5f978..05b2acaf 100644
          /* dump report by using the output first video and audio streams */
          print_report(0, timer_start, cur_time, transcode_ts);
      }
-@@ -874,6 +897,14 @@ static int transcode(Scheduler *sch)
+@@ -874,6 +897,12 @@ static int transcode(Scheduler *sch)
          ret = err_merge(ret, err);
      }
  
@@ -108,14 +699,12 @@ index d4e5f978..05b2acaf 100644
 +    if (once == 0 && nb_output_dumped >= nb_output_files) {
 +        print_json_stream_maps();
 +        print_json_outputs();
-+
-+        once = 1;
 +    }
 +
      term_exit();
  
      /* dump report by using the first video and audio streams */
-@@ -958,6 +989,8 @@ int main(int argc, char **argv)
+@@ -958,6 +987,8 @@ int main(int argc, char **argv)
      if (ret < 0)
          goto finish;
  
@@ -500,10 +1089,10 @@ index 171e47be..d8153be2 100644
      cleanup_filtergraph(fg, fgt);
 diff --git a/fftools/ffmpeg_json.c b/fftools/ffmpeg_json.c
 new file mode 100644
-index 00000000..fb7b1f0d
+index 00000000..90df3f41
 --- /dev/null
 +++ b/fftools/ffmpeg_json.c
-@@ -0,0 +1,607 @@
+@@ -0,0 +1,624 @@
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -645,7 +1234,6 @@ index 00000000..fb7b1f0d
 +        AVStream *st = ost->st;
 +        AVCodecParameters *par = st->codecpar;
 +        AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
-+        AVCodecContext *enc = ost->enc_ctx;
 +        char *url = NULL;
 +
 +        if(av_escape(&url,
@@ -692,9 +1280,9 @@ index 00000000..fb7b1f0d
 +                    : av_get_pix_fmt_name(st->codecpar->format),
 +                st->codecpar->width,
 +                st->codecpar->height);
-+        } else if(enc->codec_type == AVMEDIA_TYPE_AUDIO) {
++        } else if(st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 +            char layout[128];
-+            av_channel_layout_describe(&enc->ch_layout, layout, sizeof(layout));
++            av_channel_layout_describe(&st->codecpar->ch_layout, layout, sizeof(layout));
 +
 +            av_bprintf(&buf,
 +                ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
@@ -890,18 +1478,22 @@ index 00000000..fb7b1f0d
 + * Write a graph as JSON to an initialized buffer
 + *
 + * @param buf Pointer to an initialized AVBPrint buffer
++ * @param index Index of the graph
 + * @param graph Pointer to a AVFilterGraph
 + */
-+void print_json_graph(AVBPrint *buf, AVFilterGraph *graph)
++void print_json_graph(AVBPrint *buf, int index, AVFilterGraph *graph)
 +{
 +    int i, j;
 +
 +    if(graph == NULL) {
-+        av_bprintf(buf, "[]");
 +        return;
 +    }
 +
-+    av_bprintf(buf, "[");
++    if(graph->nb_filters == 0) {
++        return;
++    }
++
++    av_bprintf(buf, "{\"index\":%d,\"graph\":[", index);
 +
 +    for(i = 0; i < graph->nb_filters; i++) {
 +        const AVFilterContext *filter_ctx = graph->filters[i];
@@ -912,9 +1504,11 @@ index 00000000..fb7b1f0d
 +                const AVFilterContext *dst_filter_ctx = link->dst;
 +
 +                av_bprintf(buf,
-+                    "{\"src_name\":\"%s\",\"src_filter\":\"%s\",\"dst_name\":\"%s\",\"dst_filter\":\"%s\",",
++                    "{\"src_id\":\"%"PRIxPTR"\",\"src_name\":\"%s\",\"src_filter\":\"%s\",\"dst_id\":\"%"PRIxPTR"\",\"dst_name\":\"%s\",\"dst_filter\":\"%s\",",
++                    (uintptr_t)filter_ctx,
 +                    filter_ctx->name,
 +                    filter_ctx->filter->name,
++                    (uintptr_t)dst_filter_ctx,
 +                    dst_filter_ctx->name,
 +                    dst_filter_ctx->filter->name);
 +                av_bprintf(buf,
@@ -953,7 +1547,7 @@ index 00000000..fb7b1f0d
 +        }
 +    }
 +
-+    av_bprintf(buf, "]");
++    av_bprintf(buf, "]},");
 +}
 +
 +typedef struct FilterGraphPriv {
@@ -1007,14 +1601,12 @@ index 00000000..fb7b1f0d
 +        FilterGraph *fg = filtergraphs[i];
 +        const FilterGraphPriv *fgp = cfgp_from_cfg(fg);
 +
-+        av_bprintf(&buf, "{\"index\":%d,\"graph\":", i);
-+        print_json_graph(&buf, fgp->graph);
++        print_json_graph(&buf, fg->index, fgp->graph);
++    }
 +
-+        if(i == (nb_filtergraphs - 1)) {
-+            av_bprintf(&buf, "}");
-+        } else {
-+            av_bprintf(&buf, "},");
-+        }
++    if(buf.str[buf.len-1] == ',') {
++        buf.str[buf.len-1] = '\0';
++        buf.len--;
 +    }
 +
 +    av_bprintf(&buf, "],");
@@ -1033,12 +1625,45 @@ index 00000000..fb7b1f0d
 +                AVFilterContext *ctx = ifp->filter;
 +
 +                av_bprintf(&buf,
-+                    "{\"input\":{\"index\":%d,\"stream\":%d},\"graph\":{\"index\":%d,\"name\":\"%s\"},\"output\":null},",
++                    "{\"input\":{\"index\":%d,\"stream\":%d},\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":null},",
 +                    ist->file->index,
 +                    ist->st->index,
 +                    f->graph->index,
++                    (uintptr_t)ctx,
 +                    ctx->name);
 +            }
++        }
++    }
++
++    for(i = 0; i < nb_filtergraphs; i++) {
++        FilterGraph *fg = filtergraphs[i];
++        const FilterGraphPriv *fgp = cfgp_from_cfg(fg);
++
++        if(fgp->graph->nb_filters == 0) {
++            continue;
++        }
++
++        for(j = 0; j < fg->nb_outputs; j++) {
++            OutputFilter *of = fg->outputs[j];
++            OutputStream *ost = of->ost;
++            OutputFilterPriv *ofp = ofp_from_ofilter(of);
++            AVFilterContext *ctx = ofp->filter;
++
++            av_bprintf(&buf,
++                "{\"input\":null,\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}}",
++                fg->index,
++                (uintptr_t)ctx,
++                ctx->name,
++                ost->file->index,
++                ost->index);
++
++            if(j != (fg->nb_outputs - 1)) {
++                av_bprintf(&buf, ",");
++            }
++        }
++
++        if(i != (nb_filtergraphs - 1)) {
++            av_bprintf(&buf, ",");
 +        }
 +    }
 +
@@ -1049,57 +1674,38 @@ index 00000000..fb7b1f0d
 +                ost->attachment_filename,
 +                ost->file->index,
 +                ost->index);
-+            goto next_output;
++            continue;
 +        }
 +
 +        if(ost->filter && ost->filter->graph) {
-+            char *name = NULL;
 +            FilterGraph *fg = ost->filter->graph;
 +            const FilterGraphPriv *fgp = cfgp_from_cfg(fg);
 +
 +            if(fgp->graph->nb_filters == 0) {
 +                av_bprintf(&buf,
-+                    "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d}",
++                    "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d},\"copy\":%s},",
 +                    ost->ist->file->index,
 +                    ost->ist->st->index,
 +                    ost->file->index,
-+                    ost->index);
-+                av_bprintf(&buf, ",\"copy\":%s", !ost->enc ? "true" : "false");
-+                goto next_output;
++                    ost->index,
++                    !ost->enc ? "true" : "false");
 +            }
 +
-+            for(j = 0; j < fg->nb_outputs; j++) {
-+                OutputFilterPriv *ofp = ofp_from_ofilter(fg->outputs[j]);
-+                AVFilterContext *ctx = ofp->filter;
-+                if(ctx->nb_outputs == 0) { // if there are no output links, then this is the last filter in the chain
-+                    name = ctx->name;
-+                    break;
-+                }
-+            }
-+
-+            av_bprintf(&buf,
-+                "{\"input\":null,\"graph\":{\"index\":%d,\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}}",
-+                fg->index,
-+                name,
-+                ost->file->index,
-+                ost->index);
-+            goto next_output;
++            continue;
 +        }
 +
 +        av_bprintf(&buf,
-+            "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d}",
++            "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d},\"copy\":%s},",
 +            ost->ist->file->index,
 +            ost->ist->st->index,
 +            ost->file->index,
-+            ost->index);
-+        av_bprintf(&buf, ",\"copy\":%s", !ost->enc ? "true" : "false");
++            ost->index,
++            !ost->enc ? "true" : "false");
++    }
 +
-+        av_bprintf(&buf, "}");
-+
-+    next_output:
-+        if(ost_iter(ost) != NULL) {
-+            av_bprintf(&buf, ",");
-+        }
++    if(buf.str[buf.len-1] == ',') {
++        buf.str[buf.len-1] = '\0';
++        buf.len--;
 +    }
 +
 +    av_bprintf(&buf, "]}");
@@ -1113,7 +1719,7 @@ index 00000000..fb7b1f0d
 +}
 diff --git a/fftools/ffmpeg_json.h b/fftools/ffmpeg_json.h
 new file mode 100644
-index 00000000..45cd2744
+index 00000000..becf6b7f
 --- /dev/null
 +++ b/fftools/ffmpeg_json.h
 @@ -0,0 +1,16 @@
@@ -1129,11 +1735,10 @@ index 00000000..45cd2744
 +void print_json_inputs(void);
 +void print_json_outputs(void);
 +void print_json_report(int is_last_report, int64_t timer_start, int64_t cur_time, int64_t pts);
-+void print_json_graph(AVBPrint *buf, AVFilterGraph *graph);
++void print_json_graph(AVBPrint *buf, int index, AVFilterGraph *graph);
 +void print_json_stream_maps(void);
 +
 +#endif /* FFTOOLS_FFMPEG_JSON_H */
-\ No newline at end of file
 diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
 index e8e5c677..a52f14e9 100644
 --- a/fftools/ffmpeg_mux.c
