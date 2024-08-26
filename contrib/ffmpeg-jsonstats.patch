@@ -1,22 +1,22 @@
-From 3cc69c7b05ef1dfa256e12dcb354f83313a93c75 Mon Sep 17 00:00:00 2001
+From 057be68b1b53df9198568b23fa00511579208868 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Fri, 23 Aug 2024 17:25:02 +0200
-Subject: [PATCH v30] JSON progress report (ffmpeg 7.0)
+Date: Mon, 26 Aug 2024 10:39:55 +0200
+Subject: [PATCH v31] JSON progress report (ffmpeg 7.0)
 
 ---
- README.PROGRESS.md      | 583 +++++++++++++++++++++++++++++++++++++
+ README.PROGRESS.md      | 723 ++++++++++++++++++++++++++++++++++++++++
  fftools/Makefile        |   1 +
- fftools/ffmpeg.c        |  35 ++-
+ fftools/ffmpeg.c        |  35 +-
  fftools/ffmpeg.h        |   1 +
- fftools/ffmpeg_demux.c  | 146 +++-------
- fftools/ffmpeg_demux.h  | 160 +++++++++++
- fftools/ffmpeg_filter.c |   6 +
- fftools/ffmpeg_json.c   | 624 ++++++++++++++++++++++++++++++++++++++++
- fftools/ffmpeg_json.h   |  16 ++
- fftools/ffmpeg_mux.c    |  50 +++-
+ fftools/ffmpeg_demux.c  | 146 +++-----
+ fftools/ffmpeg_demux.h  | 160 +++++++++
+ fftools/ffmpeg_filter.c |   9 +-
+ fftools/ffmpeg_json.c   | 616 ++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_json.h   |  16 +
+ fftools/ffmpeg_mux.c    |  50 ++-
  fftools/ffmpeg_mux.h    |  19 +-
  fftools/ffmpeg_opt.c    |   7 +
- 12 files changed, 1538 insertions(+), 110 deletions(-)
+ 12 files changed, 1672 insertions(+), 111 deletions(-)
  create mode 100644 README.PROGRESS.md
  create mode 100644 fftools/ffmpeg_demux.h
  create mode 100644 fftools/ffmpeg_json.c
@@ -24,10 +24,10 @@ Subject: [PATCH v30] JSON progress report (ffmpeg 7.0)
 
 diff --git a/README.PROGRESS.md b/README.PROGRESS.md
 new file mode 100644
-index 00000000..f5e703fa
+index 00000000..6650fd3b
 --- /dev/null
 +++ b/README.PROGRESS.md
-@@ -0,0 +1,583 @@
+@@ -0,0 +1,723 @@
 +# Progress
 +
 +Detailed input, mapping, output, and progress outputs as JSON.
@@ -52,7 +52,7 @@ index 00000000..f5e703fa
 +
 +`ffmpeg -f lavfi -i testsrc2=rate=25:size=640x360 -map 0:0 -vframes 1 -f image2 -update 1 example.jpg`
 +
-+No we can see, what will be the different JSON outputs.
++Now we can see, what will be the different JSON outputs.
 +
 +### Probe
 +
@@ -68,35 +68,118 @@ index 00000000..f5e703fa
 +
 +```json
 +{
-+    "graphs": [],
-+    "mapping": [
++    "graphs": [
 +        {
-+            "input": {
-+                "index": 0,
-+                "stream": 0
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 0
-+            },
-+            "copy": false
++            "index": 0,
++            "graph": [
++                {
++                    "src_id": "6000000088f0",
++                    "src_name": "Parsed_null_0",
++                    "src_filter": "null",
++                    "dst_id": "600000008a50",
++                    "dst_name": "out_0_0",
++                    "dst_filter": "buffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "6000000089a0",
++                    "src_name": "graph 0 input from stream 0:0",
++                    "src_filter": "buffer",
++                    "dst_id": "6000000088f0",
++                    "dst_name": "Parsed_null_0",
++                    "dst_filter": "null",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                }
++            ]
 +        },
 +        {
-+            "input": {
-+                "index": 0,
-+                "stream": 1
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 1
-+            },
-+            "copy": false
++            "index": 1,
++            "graph": [
++                {
++                    "src_id": "600000000000",
++                    "src_name": "Parsed_anull_0",
++                    "src_filter": "anull",
++                    "dst_id": "6000000000b0",
++                    "dst_name": "auto_aresample_0",
++                    "dst_filter": "aresample",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "fltp",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "60000000de40",
++                    "src_name": "graph_1_in_0:1",
++                    "src_filter": "abuffer",
++                    "dst_id": "600000000000",
++                    "dst_name": "Parsed_anull_0",
++                    "dst_filter": "anull",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "fltp",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "60000000dfa0",
++                    "src_name": "format_out_0_1",
++                    "src_filter": "aformat",
++                    "dst_id": "60000000def0",
++                    "dst_name": "out_0_1",
++                    "dst_filter": "abuffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "s16",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "6000000000b0",
++                    "src_name": "auto_aresample_0",
++                    "src_filter": "aresample",
++                    "dst_id": "60000000dfa0",
++                    "dst_name": "format_out_0_1",
++                    "dst_filter": "aformat",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "s16",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                }
++            ]
 +        }
++    ],
++    "mapping": [
++        { "input": { "index": 0, "stream": 0 }, "graph": { "index": 0, "id": "6000000089a0", "name": "graph 0 input from stream 0:0" }, "output": null },
++        { "input": { "index": 0, "stream": 1 }, "graph": { "index": 1, "id": "60000000de40", "name": "graph_1_in_0:1" }, "output": null },
++        { "input": null, "graph": { "index": 0, "id": "600000008a50", "name": "out_0_0" }, "output": { "index": 0, "stream": 0 } },
++        { "input": null, "graph": { "index": 1, "id": "60000000def0", "name": "out_0_1" }, "output": { "index": 0, "stream": 1 } }
 +    ]
 +}
 +```
 +
-+`ffmpeg -i example_audio.mp4 -codec copy -f null - `
++`ffmpeg -i example_audio.mp4 -codec copy -f null -`
 +
 +```json
 +{
@@ -108,13 +191,65 @@ index 00000000..f5e703fa
 +}
 +```
 +
-+`ffmpeg -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null - `
++`ffmpeg -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null -`
 +
 +```json
 +{
-+    "graphs": [],
++    "graphs": [
++        {
++            "index": 0,
++            "graph": [
++                {
++                    "src_id": "6000001bc000",
++                    "src_name": "Parsed_null_0",
++                    "src_filter": "null",
++                    "dst_id": "6000001a49a0",
++                    "dst_name": "format",
++                    "dst_filter": "format",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "6000001a4840",
++                    "src_name": "graph 0 input from stream 0:0",
++                    "src_filter": "buffer",
++                    "dst_id": "6000001bc000",
++                    "dst_name": "Parsed_null_0",
++                    "dst_filter": "null",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                },
++                {
++                    "src_id": "6000001a49a0",
++                    "src_name": "format",
++                    "src_filter": "format",
++                    "dst_id": "6000001a48f0",
++                    "dst_name": "out_0_0",
++                    "dst_filter": "buffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/12800",
++                    "type": "video",
++                    "format": "yuv420p",
++                    "width": 640,
++                    "height": 360
++                }
++            ]
++        }
++    ],
 +    "mapping": [
-+        { "input": { "index": 0, "stream": 0 }, "output": { "index": 0, "stream": 0 }, "copy": false },
++        { "input": { "index": 0, "stream": 0 }, "graph": { "index": 0, "id": "6000001a4840", "name": "graph 0 input from stream 0:0" }, "output": null },
++        { "input": null, "graph": { "index": 0, "id": "6000001a48f0", "name": "out_0_0" }, "output": { "index": 0, "stream": 0 } },
 +        { "input": { "index": 0, "stream": 1 }, "output": { "index": 0, "stream": 1 }, "copy": true }
 +    ]
 +}
@@ -131,10 +266,10 @@ index 00000000..f5e703fa
 +            "index": 0,
 +            "graph": [
 +                {
-+                    "src_id": "600002accc60",
++                    "src_id": "6000012c0fd0",
 +                    "src_name": "Parsed_split_0",
 +                    "src_filter": "split",
-+                    "dst_id": "600002accd10",
++                    "dst_id": "6000012c1080",
 +                    "dst_name": "Parsed_split_1",
 +                    "dst_filter": "split",
 +                    "inpad": "output0",
@@ -146,10 +281,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002accc60",
++                    "src_id": "6000012c0fd0",
 +                    "src_name": "Parsed_split_0",
 +                    "src_filter": "split",
-+                    "dst_id": "600002accdc0",
++                    "dst_id": "6000012c1130",
 +                    "dst_name": "Parsed_boxblur_2",
 +                    "dst_filter": "boxblur",
 +                    "inpad": "output1",
@@ -161,10 +296,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002accd10",
++                    "src_id": "6000012c1080",
 +                    "src_name": "Parsed_split_1",
 +                    "src_filter": "split",
-+                    "dst_id": "600002accf20",
++                    "dst_id": "6000012c1290",
 +                    "dst_name": "Parsed_negate_4",
 +                    "dst_filter": "negate",
 +                    "inpad": "output0",
@@ -176,10 +311,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002accd10",
++                    "src_id": "6000012c1080",
 +                    "src_name": "Parsed_split_1",
 +                    "src_filter": "split",
-+                    "dst_id": "600002accfd0",
++                    "dst_id": "6000012c1340",
 +                    "dst_name": "Parsed_yadif_5",
 +                    "dst_filter": "yadif",
 +                    "inpad": "output1",
@@ -191,10 +326,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002accdc0",
++                    "src_id": "6000012c1130",
 +                    "src_name": "Parsed_boxblur_2",
 +                    "src_filter": "boxblur",
-+                    "dst_id": "600002acce70",
++                    "dst_id": "6000012c11e0",
 +                    "dst_name": "Parsed_overlay_3",
 +                    "dst_filter": "overlay",
 +                    "inpad": "default",
@@ -206,10 +341,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acce70",
++                    "src_id": "6000012c11e0",
 +                    "src_name": "Parsed_overlay_3",
 +                    "src_filter": "overlay",
-+                    "dst_id": "600002acd3f0",
++                    "dst_id": "6000012c1760",
 +                    "dst_name": "format",
 +                    "dst_filter": "format",
 +                    "inpad": "default",
@@ -221,10 +356,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002accf20",
++                    "src_id": "6000012c1290",
 +                    "src_name": "Parsed_negate_4",
 +                    "src_filter": "negate",
-+                    "dst_id": "600002acd130",
++                    "dst_id": "6000012c14a0",
 +                    "dst_name": "Parsed_split_6",
 +                    "dst_filter": "split",
 +                    "inpad": "default",
@@ -236,10 +371,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002accfd0",
++                    "src_id": "6000012c1340",
 +                    "src_name": "Parsed_yadif_5",
 +                    "src_filter": "yadif",
-+                    "dst_id": "600002acd550",
++                    "dst_id": "6000012ca470",
 +                    "dst_name": "format",
 +                    "dst_filter": "format",
 +                    "inpad": "default",
@@ -251,10 +386,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd130",
++                    "src_id": "6000012c14a0",
 +                    "src_name": "Parsed_split_6",
 +                    "src_filter": "split",
-+                    "dst_id": "600002acd6b0",
++                    "dst_id": "6000012ca5d0",
 +                    "dst_name": "format",
 +                    "dst_filter": "format",
 +                    "inpad": "output0",
@@ -266,10 +401,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd130",
++                    "src_id": "6000012c14a0",
 +                    "src_name": "Parsed_split_6",
 +                    "src_filter": "split",
-+                    "dst_id": "600002acd810",
++                    "dst_id": "6000012ca730",
 +                    "dst_name": "format",
 +                    "dst_filter": "format",
 +                    "inpad": "output1",
@@ -281,10 +416,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd1e0",
++                    "src_id": "6000012c1550",
 +                    "src_name": "graph 0 input from stream 0:0",
 +                    "src_filter": "buffer",
-+                    "dst_id": "600002accc60",
++                    "dst_id": "6000012c0fd0",
 +                    "dst_name": "Parsed_split_0",
 +                    "dst_filter": "split",
 +                    "inpad": "default",
@@ -296,10 +431,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd290",
++                    "src_id": "6000012c1600",
 +                    "src_name": "graph 0 input from stream 1:0",
 +                    "src_filter": "buffer",
-+                    "dst_id": "600002acd8c0",
++                    "dst_id": "6000012d8000",
 +                    "dst_name": "auto_scale_0",
 +                    "dst_filter": "scale",
 +                    "inpad": "default",
@@ -311,10 +446,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd3f0",
++                    "src_id": "6000012c1760",
 +                    "src_name": "format",
 +                    "src_filter": "format",
-+                    "dst_id": "600002acd340",
++                    "dst_id": "6000012c16b0",
 +                    "dst_name": "out_0_0",
 +                    "dst_filter": "buffersink",
 +                    "inpad": "default",
@@ -326,10 +461,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd550",
++                    "src_id": "6000012ca470",
 +                    "src_name": "format",
 +                    "src_filter": "format",
-+                    "dst_id": "600002acd4a0",
++                    "dst_id": "6000012ca3c0",
 +                    "dst_name": "out_0_1",
 +                    "dst_filter": "buffersink",
 +                    "inpad": "default",
@@ -341,10 +476,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd6b0",
++                    "src_id": "6000012ca5d0",
 +                    "src_name": "format",
 +                    "src_filter": "format",
-+                    "dst_id": "600002acd600",
++                    "dst_id": "6000012ca520",
 +                    "dst_name": "out_0_2",
 +                    "dst_filter": "buffersink",
 +                    "inpad": "default",
@@ -356,10 +491,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd810",
++                    "src_id": "6000012ca730",
 +                    "src_name": "format",
 +                    "src_filter": "format",
-+                    "dst_id": "600002acd760",
++                    "dst_id": "6000012ca680",
 +                    "dst_name": "out_0_3",
 +                    "dst_filter": "buffersink",
 +                    "inpad": "default",
@@ -371,10 +506,10 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                },
 +                {
-+                    "src_id": "600002acd8c0",
++                    "src_id": "6000012d8000",
 +                    "src_name": "auto_scale_0",
 +                    "src_filter": "scale",
-+                    "dst_id": "600002acce70",
++                    "dst_id": "6000012c11e0",
 +                    "dst_name": "Parsed_overlay_3",
 +                    "dst_filter": "overlay",
 +                    "inpad": "default",
@@ -386,92 +521,97 @@ index 00000000..f5e703fa
 +                    "height": 360
 +                }
 +            ]
++        },
++        {
++            "index": 1,
++            "graph": [
++                {
++                    "src_id": "6000012ccc60",
++                    "src_name": "Parsed_dcshift_0",
++                    "src_filter": "dcshift",
++                    "dst_id": "6000012c40b0",
++                    "dst_name": "auto_aresample_1",
++                    "dst_filter": "aresample",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "s32p",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "6000012ccd10",
++                    "src_name": "graph_1_in_0:1",
++                    "src_filter": "abuffer",
++                    "dst_id": "6000012c9d90",
++                    "dst_name": "auto_aresample_0",
++                    "dst_filter": "aresample",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "fltp",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "6000012cce70",
++                    "src_name": "format_out_0_4",
++                    "src_filter": "aformat",
++                    "dst_id": "6000012ccdc0",
++                    "dst_name": "out_0_4",
++                    "dst_filter": "abuffersink",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "fltp",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "6000012c9d90",
++                    "src_name": "auto_aresample_0",
++                    "src_filter": "aresample",
++                    "dst_id": "6000012ccc60",
++                    "dst_name": "Parsed_dcshift_0",
++                    "dst_filter": "dcshift",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "s32p",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                },
++                {
++                    "src_id": "6000012c40b0",
++                    "src_name": "auto_aresample_1",
++                    "src_filter": "aresample",
++                    "dst_id": "6000012cce70",
++                    "dst_name": "format_out_0_4",
++                    "dst_filter": "aformat",
++                    "inpad": "default",
++                    "outpad": "default",
++                    "timebase": "1/44100",
++                    "type": "audio",
++                    "format": "fltp",
++                    "sampling_hz": 44100,
++                    "layout": "stereo"
++                }
++            ]
 +        }
 +    ],
 +    "mapping": [
-+        {
-+            "input": {
-+                "index": 0,
-+                "stream": 0
-+            },
-+            "graph": {
-+                "index": 0,
-+                "id": "600002acd1e0",
-+                "name": "graph 0 input from stream 0:0"
-+            },
-+            "output": null
-+        },
-+        {
-+            "input": {
-+                "index": 1,
-+                "stream": 0
-+            },
-+            "graph": {
-+                "index": 0,
-+                "id": "600002acd290",
-+                "name": "graph 0 input from stream 1:0"
-+            },
-+            "output": null
-+        },
-+        {
-+            "input": null,
-+            "graph": {
-+                "index": 0,
-+                "id": "600002acd340",
-+                "name": "out_0_0"
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 0
-+            }
-+        },
-+        {
-+            "input": null,
-+            "graph": {
-+                "index": 0,
-+                "id": "600002acd4a0",
-+                "name": "out_0_1"
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 1
-+            }
-+        },
-+        {
-+            "input": null,
-+            "graph": {
-+                "index": 0,
-+                "id": "600002acd600",
-+                "name": "out_0_2"
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 2
-+            }
-+        },
-+        {
-+            "input": null,
-+            "graph": {
-+                "index": 0,
-+                "id": "600002acd760",
-+                "name": "out_0_3"
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 3
-+            }
-+        },
-+        {
-+            "input": {
-+                "index": 0,
-+                "stream": 1
-+            },
-+            "output": {
-+                "index": 0,
-+                "stream": 4
-+            },
-+            "copy": false
-+        }
++        { "input": { "index": 0, "stream": 0 }, "graph": { "index": 0, "id": "6000012c1550", "name": "graph 0 input from stream 0:0" }, "output": null },
++        { "input": { "index": 0, "stream": 1 }, "graph": { "index": 1, "id": "6000012ccd10", "name": "graph_1_in_0:1" }, "output": null },
++        { "input": { "index": 1, "stream": 0 }, "graph": { "index": 0, "id": "6000012c1600", "name": "graph 0 input from stream 1:0" }, "output": null },
++        { "input": null, "graph": { "index": 0, "id": "6000012c16b0", "name": "out_0_0" }, "output": { "index": 0, "stream": 0 } },
++        { "input": null, "graph": { "index": 0, "id": "6000012ca3c0", "name": "out_0_1" }, "output": { "index": 0, "stream": 1 } },
++        { "input": null, "graph": { "index": 0, "id": "6000012ca520", "name": "out_0_2" }, "output": { "index": 0, "stream": 2 } },
++        { "input": null, "graph": { "index": 0, "id": "6000012ca680", "name": "out_0_3" }, "output": { "index": 0, "stream": 3 } },
++        { "input": null, "graph": { "index": 1, "id": "6000012ccdc0", "name": "out_0_4" }, "output": { "index": 0, "stream": 4 } }
 +    ]
 +}
 +```
@@ -624,7 +764,7 @@ index 083a1368..adbf81ee 100644
      fftools/sync_queue.o        \
      fftools/thread_queue.o      \
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index d4e5f978..bc5df866 100644
+index d4e5f978..747998f4 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
 @@ -99,8 +99,11 @@
@@ -681,7 +821,7 @@ index d4e5f978..bc5df866 100644
                  break;
  
 +        // Dump outputs and stream maps before any report
-+        if (once == 0 && nb_output_dumped >= nb_output_files) {
++        if (once == 0 && atomic_load(&nb_output_dumped) >= nb_output_files) {
 +            print_json_stream_maps();
 +            print_json_outputs();
 +
@@ -696,7 +836,7 @@ index d4e5f978..bc5df866 100644
      }
  
 +    // Dump outputs and stream maps before any report
-+    if (once == 0 && nb_output_dumped >= nb_output_files) {
++    if (once == 0 && atomic_load(&nb_output_dumped) >= nb_output_files) {
 +        print_json_stream_maps();
 +        print_json_outputs();
 +    }
@@ -1064,7 +1204,7 @@ index 00000000..08c8fc9d
 +#endif /* FFTOOLS_FFMPEG_DEMUX_H */
 \ No newline at end of file
 diff --git a/fftools/ffmpeg_filter.c b/fftools/ffmpeg_filter.c
-index 171e47be..d8153be2 100644
+index 171e47be..4b9545ed 100644
 --- a/fftools/ffmpeg_filter.c
 +++ b/fftools/ffmpeg_filter.c
 @@ -45,6 +45,8 @@
@@ -1076,7 +1216,15 @@ index 171e47be..d8153be2 100644
      // name used for logging
      char             log_name[32];
  
-@@ -1829,6 +1831,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
+@@ -933,6 +935,7 @@ void fg_free(FilterGraph **pfg)
+     }
+     av_freep(&fg->outputs);
+     av_freep(&fgp->graph_desc);
++    avfilter_graph_free(&fgp->graph);
+ 
+     av_frame_free(&fgp->frame);
+     av_frame_free(&fgp->frame_enc);
+@@ -1829,6 +1832,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
              goto fail;
      }
  
@@ -1087,12 +1235,21 @@ index 171e47be..d8153be2 100644
      return 0;
  fail:
      cleanup_filtergraph(fg, fgt);
+@@ -2726,7 +2733,7 @@ static void fg_thread_uninit(FilterGraphThread *fgt)
+     av_freep(&fgt->eof_in);
+     av_freep(&fgt->eof_out);
+ 
+-    avfilter_graph_free(&fgt->graph);
++    //avfilter_graph_free(&fgt->graph);
+ 
+     memset(fgt, 0, sizeof(*fgt));
+ }
 diff --git a/fftools/ffmpeg_json.c b/fftools/ffmpeg_json.c
 new file mode 100644
-index 00000000..90df3f41
+index 00000000..8d9aa854
 --- /dev/null
 +++ b/fftools/ffmpeg_json.c
-@@ -0,0 +1,624 @@
+@@ -0,0 +1,616 @@
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -1521,8 +1678,7 @@ index 00000000..90df3f41
 +                    link->time_base.den);
 +
 +                if(link->type == AVMEDIA_TYPE_VIDEO) {
-+                    const AVPixFmtDescriptor *desc =
-+                        av_pix_fmt_desc_get(link->format);
++                    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(link->format);
 +                    av_bprintf(buf,
 +                        "\"type\":\"video\",\"format\":\"%s\",\"width\":%d,\"height\":%d",
 +                        desc->name,
@@ -1538,13 +1694,14 @@ index 00000000..90df3f41
 +                        layout);
 +                }
 +
-+                if(i == (graph->nb_filters - 1)) {
-+                    av_bprintf(buf, "}");
-+                } else {
-+                    av_bprintf(buf, "},");
-+                }
++                av_bprintf(buf, "},");
 +            }
 +        }
++    }
++
++    if(buf->str[buf->len-1] == ',') {
++        buf->str[buf->len-1] = '\0';
++        buf->len--;
 +    }
 +
 +    av_bprintf(buf, "]},");
@@ -1650,20 +1807,12 @@ index 00000000..90df3f41
 +            AVFilterContext *ctx = ofp->filter;
 +
 +            av_bprintf(&buf,
-+                "{\"input\":null,\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}}",
++                "{\"input\":null,\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}},",
 +                fg->index,
 +                (uintptr_t)ctx,
 +                ctx->name,
 +                ost->file->index,
 +                ost->index);
-+
-+            if(j != (fg->nb_outputs - 1)) {
-+                av_bprintf(&buf, ",");
-+            }
-+        }
-+
-+        if(i != (nb_filtergraphs - 1)) {
-+            av_bprintf(&buf, ",");
 +        }
 +    }
 +
