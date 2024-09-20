@@ -44,8 +44,10 @@ RUN apk add -U \
   lame-dev \
   opus-dev \
   libvorbis-dev \
+  fdk-aac-dev \
   dav1d-dev \
   rav1e-dev \
+  aom-dev \
   alsa-lib-dev \
   v4l-utils-dev \
   raspberrypi-dev \
@@ -90,8 +92,10 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libmp3lame \
   --enable-libopus \
   --enable-libvorbis \
+  --enable-libfdk-aac \
   --enable-libdav1d \
   --enable-librav1e \
+  --enable-libaom \
   --disable-ffplay \
   --disable-debug \
   --disable-doc \
