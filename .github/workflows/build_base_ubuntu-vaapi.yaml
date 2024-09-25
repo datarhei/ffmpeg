@@ -52,21 +52,9 @@ jobs:
           file: ./Dockerfile.ubuntu.vaapi
           build-args: |
             BUILD_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
+            DEPLOY_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
             BUILD_DATE=${{ env.CURRENT_DATE }}
             BUILD_COMMIT=${{ env.CURRENT_COMMIT }}
-            DEPLOY_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
-            FREETYPE_VERSION=${{ env.FREETYPE_VERSION }}
-            XML2_VERSION=${{ env.XML2_VERSION }}
-            SRT_VERSION=${{ env.SRT_VERSION }}
-            X264_VERSION=${{ env.X264_VERSION }}
-            X265_VERSION=${{ env.X265_VERSION }}
-            VPX_VERSION=${{ env.VPX_VERSION }}
-            LAME_VERSION=${{ env.LAME_VERSION }}
-            OPUS_VERSION=${{ env.OPUS_VERSION }}
-            OGG_VERSION=${{ env.OGG_VERSION }}
-            VORBIS_VERSION=${{ env.VORBIS_VERSION }}
-            DAV1D_VERSION=${{ env.DAV1D_VERSION }}
-            RAV1E_VERSION=${{ env.RAV1E_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
           platforms: linux/amd64
           push: true
