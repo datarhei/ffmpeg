@@ -9,6 +9,13 @@ on:
 jobs:
   docker:
     runs-on: [self-hosted]
+    strategy:
+      matrix:
+        include:
+          - cuda: 11
+            platforms: linux/amd64
+          - cuda: 12
+            platforms: linux/amd64
     steps:
       - name: Get current date
         run: |
@@ -23,7 +30,7 @@ jobs:
 
       - uses: cardinalby/export-env-action@v2
         with:
-          envFile: "Build.ubuntu.env|Build.ubuntu.cuda.env"
+          envFile: "Build.ubuntu.cuda${{ matrix.cuda }}.env"
           export: "true"
           expandWithJobEnv: "true"
           expand: "true"
@@ -49,28 +56,16 @@ jobs:
         with:
           builder: ${{ steps.buildx.outputs.name }}
           context: .
-          file: ./Dockerfile.ubuntu.cuda
+          file: ./Dockerfile.ubuntu.cuda${{ matrix.cuda }}
           build-args: |
-            BUILD_IMAGE=nvidia/cuda:${{ env.CUDA_VERSION }}-devel-${{ env.OS_NAME }}${{ env.OS_VERSION }}
+            BUILD_IMAGE=nvidia/cuda:${{ env.CUDA_VERSION }}-devel-ubuntu${{ env.OS_VERSION }}
+            DEPLOY_IMAGE=nvidia/cuda:${{ env.CUDA_VERSION }}-runtime-ubuntu${{ env.OS_VERSION }}
             BUILD_DATE=${{ env.CURRENT_DATE }}
             BUILD_COMMIT=${{ env.CURRENT_COMMIT }}
-            DEPLOY_IMAGE=nvidia/cuda:${{ env.CUDA_VERSION }}-runtime-${{ env.OS_NAME }}${{ env.OS_VERSION }}
             FFNVCODEC_VERSION=${{ env.FFNVCODEC_VERSION }}
-            FREETYPE_VERSION=${{ env.FREETYPE_VERSION }}
-            XML2_VERSION=${{ env.XML2_VERSION }}
-            SRT_VERSION=${{ env.SRT_VERSION }}
-            X264_VERSION=${{ env.X264_VERSION }}
-            X265_VERSION=${{ env.X265_VERSION }}
-            VPX_VERSION=${{ env.VPX_VERSION }}
-            LAME_VERSION=${{ env.LAME_VERSION }}
-            OPUS_VERSION=${{ env.OPUS_VERSION }}
-            OGG_VERSION=${{ env.OGG_VERSION }}
-            VORBIS_VERSION=${{ env.VORBIS_VERSION }}
-            DAV1D_VERSION=${{ env.DAV1D_VERSION }}
-            RAV1E_VERSION=${{ env.RAV1E_VERSION }}
             FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
-          platforms: linux/amd64
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: |
-            datarhei/base:${{ env.OS_NAME }}-ffmpeg-cuda-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}-${{env.CUDA_VERSION}}
-            datarhei/base:ffmpeg${{ env.FFMPEG_VERSION }}-cuda-${{ env.OS_NAME }}${{ env.OS_VERSION }}-cuda${{env.CUDA_VERSION}}
+            datarhei/base:ubuntu-ffmpeg-cuda-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}-${{ env.CUDA_VERSION }}
+            datarhei/base:ffmpeg${{ env.FFMPEG_VERSION }}-cuda-ubuntu${{ env.OS_VERSION }}-cuda${{ env.CUDA_VERSION }}

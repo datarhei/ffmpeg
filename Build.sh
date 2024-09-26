@@ -39,44 +39,38 @@ function build_default() {
 function build_rpi() {
   source_env ./Build.alpine.env
   source_env ./Build.alpine.rpi.env
-  # "--load" does not support multiple platforms
-  # use "--push" to publish
-  # --platform linux/arm64,linux/arm/v7
-  docker buildx build \
-    --load \
+  docker build \
     --progress=plain \
     --build-arg BUILD_IMAGE=$OS_NAME:$OS_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
-    --platform linux/arm64 \
     -f Dockerfile.alpine.rpi \
     -t datarhei/base:ffmpeg${FFMPEG_VERSION}-rpi-${OS_NAME}${OS_VERSION} .
   docker tag datarhei/base:ffmpeg${FFMPEG_VERSION}-rpi-${OS_NAME}${OS_VERSION} datarhei/base:$OS_NAME-ffmpeg-rpi-$OS_VERSION-$FFMPEG_VERSION
   docker tag datarhei/base:ffmpeg${FFMPEG_VERSION}-rpi-${OS_NAME}${OS_VERSION} datarhei/base:$OS_NAME-ffmpeg-rpi-latest
 }
 
-function build_cuda() {
-  source_env ./Build.ubuntu.env
-  source_env ./Build.ubuntu.cuda.env
-  docker buildx build \
-    --load \
-    --build-arg BUILD_IMAGE=nvidia/cuda:$CUDA_VERSION-devel-$OS_NAME$OS_VERSION \
-    --build-arg DEPLOY_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-$OS_NAME$OS_VERSION \
+function build_cuda11() {
+  source_env ./Build.ubuntu.cuda11.env
+  docker build \
+    --progress=plain \
+    --build-arg BUILD_IMAGE=nvidia/cuda:$CUDA_VERSION-devel-ubuntu$OS_VERSION \
+    --build-arg DEPLOY_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-ubuntu$OS_VERSION \
     --build-arg FFNVCODEC_VERSION=$FFNVCODEC_VERSION \
-    --build-arg FREETYPE_VERSION=$FREETYPE_VERSION \
-    --build-arg XML2_VERSION=$XML2_VERSION \
-    --build-arg SRT_VERSION=$SRT_VERSION \
-    --build-arg X264_VERSION=$X264_VERSION \
-    --build-arg X265_VERSION=$X265_VERSION \
-    --build-arg VPX_VERSION=$VPX_VERSION \
-    --build-arg LAME_VERSION=$LAME_VERSION \
-    --build-arg OPUS_VERSION=$OPUS_VERSION \
-    --build-arg VORBIS_VERSION=$VORBIS_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
-    --platform linux/amd64 \
-    -f Dockerfile.ubuntu.cuda \
-    -t datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-${OS_NAME}${OS_VERSION}-cuda${CUDA_VERSION} .
-  docker tag datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-${OS_NAME}${OS_VERSION}-cuda${CUDA_VERSION} datarhei/base:$OS_NAME-ffmpeg-cuda-$OS_VERSION-$FFMPEG_VERSION-$CUDA_VERSION
-  docker tag datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-${OS_NAME}${OS_VERSION}-cuda${CUDA_VERSION} datarhei/base:$OS_NAME-ffmpeg-cuda-latest
+    -f Dockerfile.ubuntu.cuda11 \
+    -t datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-ubuntu$OS_VERSION-cuda${CUDA_VERSION} .
+}
+
+function build_cuda12() {
+  source_env ./Build.ubuntu.cuda12.env
+  docker build \
+    --progress=plain \
+    --build-arg BUILD_IMAGE=nvidia/cuda:$CUDA_VERSION-devel-ubuntu$OS_VERSION \
+    --build-arg DEPLOY_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-ubuntu$OS_VERSION \
+    --build-arg FFNVCODEC_VERSION=$FFNVCODEC_VERSION \
+    --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
+    -f Dockerfile.ubuntu.cuda12 \
+    -t datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-ubuntu$OS_VERSION-cuda${CUDA_VERSION} .
 }
 
 function build_vaapi() {
@@ -87,28 +81,15 @@ function build_vaapi() {
     --progress=plain \
     --build-arg BUILD_IMAGE=$OS_NAME:$OS_VERSION \
     --build-arg DEPLOY_IMAGE=$OS_NAME:$OS_VERSION \
-    --build-arg FREETYPE_VERSION=$FREETYPE_VERSION \
-    --build-arg XML2_VERSION=$XML2_VERSION \
-    --build-arg SRT_VERSION=$SRT_VERSION \
-    --build-arg X264_VERSION=$X264_VERSION \
-    --build-arg X265_VERSION=$X265_VERSION \
-    --build-arg VPX_VERSION=$VPX_VERSION \
-    --build-arg LAME_VERSION=$LAME_VERSION \
-    --build-arg OPUS_VERSION=$OPUS_VERSION \
-    --build-arg VORBIS_VERSION=$VORBIS_VERSION \
-    --build-arg DAV1D_VERSION=$DAV1D_VERSION \
-    --build-arg RAV1E_VERSION=$RAV1E_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
     --platform linux/amd64 \
     -f Dockerfile.ubuntu.vaapi \
     -t datarhei/base:ffmpeg${FFMPEG_VERSION}-vaapi-${OS_NAME}${OS_VERSION} .
-  docker tag datarhei/base:ffmpeg${FFMPEG_VERSION}-vaapi-${OS_NAME}${OS_VERSION} datarhei/base:$OS_NAME-ffmpeg-vaapi-$OS_VERSION-$FFMPEG_VERSION
-  docker tag datarhei/base:ffmpeg${FFMPEG_VERSION}-vaapi-${OS_NAME}${OS_VERSION} datarhei/base:$OS_NAME-ffmpeg-vaapi-latest
 }
 
 main() {
   if [[ $# == 0 ]]; then
-    echo "Options available: default, default_native, rpi, cuda, vaapi"
+    echo "Options available: default, default_native, rpi, cuda11, cuda12, vaapi"
     exit 0
   else
     if [[ $1 == "default" ]]; then
@@ -117,8 +98,10 @@ main() {
       build_default_native
     elif [[ $1 == "rpi" ]]; then
       build_rpi
-    elif [[ $1 == "cuda" ]]; then
-      build_cuda
+    elif [[ $1 == "cuda11" ]]; then
+      build_cuda11
+    elif [[ $1 == "cuda12" ]]; then
+      build_cuda12
     elif [[ $1 == "vaapi" ]]; then
       build_vaapi
     fi
