@@ -23,7 +23,7 @@ jobs:
 
       - uses: cardinalby/export-env-action@v2
         with:
-          envFile: "Build.ubuntu.env|Build.ubuntu.vaapi.env"
+          envFile: "Build.ubuntu.vaapi.env"
           export: "true"
           expandWithJobEnv: "true"
           expand: "true"
