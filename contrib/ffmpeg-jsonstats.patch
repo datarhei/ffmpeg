@@ -1,22 +1,22 @@
-From 057be68b1b53df9198568b23fa00511579208868 Mon Sep 17 00:00:00 2001
+From 63a700576177b1207db038af4b47eac07491be27 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Mon, 26 Aug 2024 10:39:55 +0200
-Subject: [PATCH v31] JSON progress report (ffmpeg 7.0)
+Date: Wed, 16 Oct 2024 14:49:25 +0200
+Subject: [PATCH v1] progress (7.1.0)
 
 ---
- README.PROGRESS.md      | 723 ++++++++++++++++++++++++++++++++++++++++
+ README.PROGRESS.md      | 759 ++++++++++++++++++++++++++++++++++++++++
  fftools/Makefile        |   1 +
  fftools/ffmpeg.c        |  35 +-
  fftools/ffmpeg.h        |   1 +
- fftools/ffmpeg_demux.c  | 146 +++-----
- fftools/ffmpeg_demux.h  | 160 +++++++++
- fftools/ffmpeg_filter.c |   9 +-
- fftools/ffmpeg_json.c   | 616 ++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_demux.c  | 149 +++-----
+ fftools/ffmpeg_demux.h  | 163 +++++++++
+ fftools/ffmpeg_filter.c |  10 +-
+ fftools/ffmpeg_json.c   | 649 ++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_json.h   |  16 +
  fftools/ffmpeg_mux.c    |  50 ++-
  fftools/ffmpeg_mux.h    |  19 +-
- fftools/ffmpeg_opt.c    |   7 +
- 12 files changed, 1672 insertions(+), 111 deletions(-)
+ fftools/ffmpeg_opt.c    |   6 +
+ 12 files changed, 1744 insertions(+), 114 deletions(-)
  create mode 100644 README.PROGRESS.md
  create mode 100644 fftools/ffmpeg_demux.h
  create mode 100644 fftools/ffmpeg_json.c
@@ -24,10 +24,10 @@ Subject: [PATCH v31] JSON progress report (ffmpeg 7.0)
 
 diff --git a/README.PROGRESS.md b/README.PROGRESS.md
 new file mode 100644
-index 00000000..6650fd3b
+index 00000000..cf650df5
 --- /dev/null
 +++ b/README.PROGRESS.md
-@@ -0,0 +1,723 @@
+@@ -0,0 +1,759 @@
 +# Progress
 +
 +Detailed input, mapping, output, and progress outputs as JSON.
@@ -56,15 +56,51 @@ index 00000000..6650fd3b
 +
 +### Probe
 +
-+If no outputs are given, only the inputs will get printed `ffmpeg -i example_audio.mp4`:
++If no outputs are given, only the inputs will get printed with a `ffmpeg.inputs:` prefix, e.g. `ffmpeg -i example_audio.mp4`:
 +
-+`ffmpeg.inputs:[{"url":"example_audio.mp4","format":"mov,mp4,m4a,3gp,3g2,mj2","index":0,"stream":0,"type":"video","codec":"h264","coder":"h264","bitrate_kbps":1822,"duration_sec":10.005000,"language":"und","profile":578,"level":30,"fps":25.000000,"pix_fmt":"yuv420p","width":640,"height":360},{"url":"example_audio.mp4","format":"mov,mp4,m4a,3gp,3g2,mj2","index":0,"stream":1,"type":"audio","codec":"aac","coder":"aac","bitrate_kbps":2,"duration_sec":10.005000,"language":"und","profile":1,"level":-99,"sampling_hz":44100,"layout":"stereo","channels":2}]`
++```json
++[
++    {
++        "url": "example_audio.mp4",
++        "format": "mov,mp4,m4a,3gp,3g2,mj2",
++        "index": 0,
++        "stream": 0,
++        "type": "video",
++        "codec": "h264",
++        "coder": "h264",
++        "bitrate_kbps": 1822,
++        "duration_sec": 10.005,
++        "language": "und",
++        "profile": 578,
++        "level": 30,
++        "fps": 25.0,
++        "pix_fmt": "yuv420p",
++        "width": 640,
++        "height": 360
++    },
++    {
++        "url": "example_audio.mp4",
++        "format": "mov,mp4,m4a,3gp,3g2,mj2",
++        "index": 0,
++        "stream": 1,
++        "type": "audio",
++        "codec": "aac",
++        "coder": "aac",
++        "bitrate_kbps": 2,
++        "duration_sec": 10.005,
++        "language": "und",
++        "profile": 1,
++        "level": -99,
++        "sampling_hz": 44100,
++        "layout": "stereo",
++        "channels": 2
++    }
++]
++```
 +
 +### Stream mapping
 +
-+With outputs, the stream mapping will get printed.
-+
-+`ffmpeg -i example_audio.mp4 -f null -`
++With outputs, the stream mapping will get printed with the `ffmpeg.mapping:` prefix, e.g. `ffmpeg -i example_audio.mp4 -f null -`
 +
 +```json
 +{
@@ -764,10 +800,10 @@ index 083a1368..adbf81ee 100644
      fftools/sync_queue.o        \
      fftools/thread_queue.o      \
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index d4e5f978..747998f4 100644
+index 420ba3c6..7475e0b8 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
-@@ -99,8 +99,11 @@
+@@ -79,8 +79,11 @@
  
  #include "cmdutils.h"
  #include "ffmpeg.h"
@@ -776,10 +812,10 @@ index d4e5f978..747998f4 100644
  #include "ffmpeg_sched.h"
  #include "ffmpeg_utils.h"
 +#include "ffmpeg_json.h"
- #include "sync_queue.h"
  
  const char program_name[] = "ffmpeg";
-@@ -535,7 +538,7 @@ void update_benchmark(const char *fmt, ...)
+ const int program_birth_year = 2000;
+@@ -545,7 +548,7 @@ void update_benchmark(const char *fmt, ...)
      }
  }
  
@@ -788,7 +824,7 @@ index d4e5f978..747998f4 100644
  {
      AVBPrint buf, buf_script;
      int64_t total_size = of_filesize(output_files[0]);
-@@ -685,6 +688,18 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
+@@ -697,6 +700,18 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
      first_report = 0;
  }
  
@@ -807,7 +843,7 @@ index d4e5f978..747998f4 100644
  static void print_stream_maps(void)
  {
      av_log(NULL, AV_LOG_INFO, "Stream mapping:\n");
-@@ -837,7 +852,7 @@ static int check_keyboard_interaction(int64_t cur_time)
+@@ -854,7 +869,7 @@ static int check_keyboard_interaction(int64_t cur_time)
   */
  static int transcode(Scheduler *sch)
  {
@@ -816,7 +852,7 @@ index d4e5f978..747998f4 100644
      int64_t timer_start, transcode_ts = 0;
  
      print_stream_maps();
-@@ -862,6 +877,14 @@ static int transcode(Scheduler *sch)
+@@ -879,6 +894,14 @@ static int transcode(Scheduler *sch)
              if (check_keyboard_interaction(cur_time) < 0)
                  break;
  
@@ -831,7 +867,7 @@ index d4e5f978..747998f4 100644
          /* dump report by using the output first video and audio streams */
          print_report(0, timer_start, cur_time, transcode_ts);
      }
-@@ -874,6 +897,12 @@ static int transcode(Scheduler *sch)
+@@ -891,6 +914,12 @@ static int transcode(Scheduler *sch)
          ret = err_merge(ret, err);
      }
  
@@ -844,7 +880,7 @@ index d4e5f978..747998f4 100644
      term_exit();
  
      /* dump report by using the first video and audio streams */
-@@ -958,6 +987,8 @@ int main(int argc, char **argv)
+@@ -975,6 +1004,8 @@ int main(int argc, char **argv)
      if (ret < 0)
          goto finish;
  
@@ -854,10 +890,10 @@ index d4e5f978..747998f4 100644
          show_usage();
          av_log(NULL, AV_LOG_WARNING, "Use -h to get full help or, even better, run 'man %s'\n", program_name);
 diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
-index 6394cca1..83f7214a 100644
+index 733d551f..44dae71d 100644
 --- a/fftools/ffmpeg.h
 +++ b/fftools/ffmpeg.h
-@@ -643,6 +643,7 @@ extern int debug_ts;
+@@ -724,6 +724,7 @@ extern int debug_ts;
  extern int exit_on_error;
  extern int abort_on_flags;
  extern int print_stats;
@@ -866,7 +902,7 @@ index 6394cca1..83f7214a 100644
  extern int stdin_interaction;
  extern AVIOContext *progress_avio;
 diff --git a/fftools/ffmpeg_demux.c b/fftools/ffmpeg_demux.c
-index 47312c9f..130ade58 100644
+index 13aef15e..55bef4c2 100644
 --- a/fftools/ffmpeg_demux.c
 +++ b/fftools/ffmpeg_demux.c
 @@ -20,6 +20,7 @@
@@ -877,7 +913,7 @@ index 47312c9f..130ade58 100644
  #include "ffmpeg_sched.h"
  #include "ffmpeg_utils.h"
  
-@@ -39,108 +40,7 @@
+@@ -40,111 +41,7 @@
  
  #include "libavformat/avformat.h"
  
@@ -906,6 +942,9 @@ index 47312c9f..130ade58 100644
 -    int                      streamcopy_needed;
 -    int                      have_sub2video;
 -    int                      reinit_filters;
+-    int                      autorotate;
+-    int                      apply_cropping;
+-
 -
 -    int                      wrap_correction_done;
 -    int                      saw_first_ts;
@@ -987,7 +1026,7 @@ index 47312c9f..130ade58 100644
  {
      return (DemuxStream*)ist;
  }
-@@ -469,6 +369,48 @@ static int input_packet_process(Demuxer *d, AVPacket *pkt, unsigned *send_flags)
+@@ -473,6 +370,48 @@ static int input_packet_process(Demuxer *d, AVPacket *pkt, unsigned *send_flags)
      ds->data_size += pkt->size;
      ds->nb_packets++;
  
@@ -1038,10 +1077,10 @@ index 47312c9f..130ade58 100644
      if (debug_ts) {
 diff --git a/fftools/ffmpeg_demux.h b/fftools/ffmpeg_demux.h
 new file mode 100644
-index 00000000..08c8fc9d
+index 00000000..709aba7a
 --- /dev/null
 +++ b/fftools/ffmpeg_demux.h
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,163 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1111,6 +1150,9 @@ index 00000000..08c8fc9d
 +    int                      streamcopy_needed;
 +    int                      have_sub2video;
 +    int                      reinit_filters;
++    int                      autorotate;
++    int                      apply_cropping;
++
 +
 +    int                      wrap_correction_done;
 +    int                      saw_first_ts;
@@ -1204,10 +1246,18 @@ index 00000000..08c8fc9d
 +#endif /* FFTOOLS_FFMPEG_DEMUX_H */
 \ No newline at end of file
 diff --git a/fftools/ffmpeg_filter.c b/fftools/ffmpeg_filter.c
-index 171e47be..4b9545ed 100644
+index 7ec328e0..814b5761 100644
 --- a/fftools/ffmpeg_filter.c
 +++ b/fftools/ffmpeg_filter.c
-@@ -45,6 +45,8 @@
+@@ -21,6 +21,7 @@
+ #include <stdint.h>
+ 
+ #include "ffmpeg.h"
++#include "ffmpeg_json.h"
+ 
+ #include "libavfilter/avfilter.h"
+ #include "libavfilter/buffersink.h"
+@@ -44,6 +45,8 @@
  typedef struct FilterGraphPriv {
      FilterGraph      fg;
  
@@ -1216,15 +1266,15 @@ index 171e47be..4b9545ed 100644
      // name used for logging
      char             log_name[32];
  
-@@ -933,6 +935,7 @@ void fg_free(FilterGraph **pfg)
+@@ -1027,6 +1030,7 @@ void fg_free(FilterGraph **pfg)
      }
      av_freep(&fg->outputs);
      av_freep(&fgp->graph_desc);
 +    avfilter_graph_free(&fgp->graph);
+     av_freep(&fgp->nb_threads);
  
      av_frame_free(&fgp->frame);
-     av_frame_free(&fgp->frame_enc);
-@@ -1829,6 +1832,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
+@@ -2019,6 +2023,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
              goto fail;
      }
  
@@ -1235,7 +1285,7 @@ index 171e47be..4b9545ed 100644
      return 0;
  fail:
      cleanup_filtergraph(fg, fgt);
-@@ -2726,7 +2733,7 @@ static void fg_thread_uninit(FilterGraphThread *fgt)
+@@ -2917,7 +2925,7 @@ static void fg_thread_uninit(FilterGraphThread *fgt)
      av_freep(&fgt->eof_in);
      av_freep(&fgt->eof_out);
  
@@ -1246,10 +1296,10 @@ index 171e47be..4b9545ed 100644
  }
 diff --git a/fftools/ffmpeg_json.c b/fftools/ffmpeg_json.c
 new file mode 100644
-index 00000000..8d9aa854
+index 00000000..3ff956c1
 --- /dev/null
 +++ b/fftools/ffmpeg_json.c
-@@ -0,0 +1,616 @@
+@@ -0,0 +1,649 @@
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -1263,6 +1313,7 @@ index 00000000..8d9aa854
 +#include "libavutil/bprint.h"
 +#include "libavutil/channel_layout.h"
 +#include "libavutil/dict.h"
++#include "libavutil/mem.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/pixdesc.h"
 +#include "libavutil/pixfmt.h"
@@ -1297,8 +1348,6 @@ index 00000000..8d9aa854
 +        for(j = 0; j < f->nb_streams; j++) {
 +            InputStream *ist = f->streams[j];
 +            AVStream *st = ist->st;
-+            const FFStream *fst = cffstream(st);
-+            AVCodecContext *dec = fst->avctx;
 +            AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
 +            char *url = NULL;
 +
@@ -1319,7 +1368,7 @@ index 00000000..8d9aa854
 +                av_get_media_type_string(st->codecpar->codec_type),
 +                avcodec_get_name(st->codecpar->codec_id),
 +                avcodec_get_name(st->codecpar->codec_id),
-+                dec->bit_rate / 1000);
++                st->codecpar->bit_rate / 1000);
 +            av_bprintf(&buf,
 +                "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d",
 +                duration,
@@ -1337,18 +1386,16 @@ index 00000000..8d9aa854
 +                av_bprintf(&buf,
 +                    ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d",
 +                    fps,
-+                    st->codecpar->format == AV_PIX_FMT_NONE
-+                        ? "none"
-+                        : av_get_pix_fmt_name(st->codecpar->format),
++                    st->codecpar->format == AV_PIX_FMT_NONE ? "none" : av_get_pix_fmt_name(st->codecpar->format),
 +                    st->codecpar->width,
 +                    st->codecpar->height);
 +            } else if(st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 +                char layout[128];
-+
 +                av_channel_layout_describe(&st->codecpar->ch_layout, layout, sizeof(layout));
 +
 +                av_bprintf(&buf,
-+                    ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
++                    ",\"sample_fmt\":\"%s\",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
++                    st->codecpar->format == AV_SAMPLE_FMT_NONE ? "none" : av_get_sample_fmt_name(st->codecpar->format),
 +                    st->codecpar->sample_rate,
 +                    layout,
 +                    st->codecpar->ch_layout.nb_channels);
@@ -1389,7 +1436,6 @@ index 00000000..8d9aa854
 +        Muxer *mux = mux_from_of(of);
 +        AVFormatContext *ctx = mux->fc;
 +        AVStream *st = ost->st;
-+        AVCodecParameters *par = st->codecpar;
 +        AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
 +        char *url = NULL;
 +
@@ -1411,10 +1457,10 @@ index 00000000..8d9aa854
 +        av_bprintf(&buf,
 +            "\"type\":\"%s\",\"codec\":\"%s\",\"coder\":\"%s\",\"bitrate_kbps\":%" PRId64
 +            ",",
-+            av_get_media_type_string(par->codec_type),
-+            avcodec_get_name(par->codec_id),
++            av_get_media_type_string(st->codecpar->codec_type),
++            avcodec_get_name(st->codecpar->codec_id),
 +            !ost->enc ? "copy" : "unknown",
-+            par->bit_rate / 1000);
++            st->codecpar->bit_rate / 1000);
 +        av_bprintf(&buf,
 +            "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d",
 +            0.0,
@@ -1432,9 +1478,7 @@ index 00000000..8d9aa854
 +            av_bprintf(&buf,
 +                ",\"fps\":%f,\"pix_fmt\":\"%s\",\"width\":%d,\"height\":%d",
 +                fps,
-+                st->codecpar->format == AV_PIX_FMT_NONE
-+                    ? "none"
-+                    : av_get_pix_fmt_name(st->codecpar->format),
++                st->codecpar->format == AV_PIX_FMT_NONE ? "none" : av_get_pix_fmt_name(st->codecpar->format),
 +                st->codecpar->width,
 +                st->codecpar->height);
 +        } else if(st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -1442,7 +1486,8 @@ index 00000000..8d9aa854
 +            av_channel_layout_describe(&st->codecpar->ch_layout, layout, sizeof(layout));
 +
 +            av_bprintf(&buf,
-+                ",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
++                ",\"sample_fmt\":\"%s\",\"sampling_hz\":%d,\"layout\":\"%s\",\"channels\":%d",
++                st->codecpar->format == AV_SAMPLE_FMT_NONE ? "none" : av_get_sample_fmt_name(st->codecpar->format),
 +                st->codecpar->sample_rate,
 +                layout,
 +                st->codecpar->ch_layout.nb_channels);
@@ -1732,6 +1777,9 @@ index 00000000..8d9aa854
 +typedef struct OutputFilterPriv {
 +    OutputFilter            ofilter;
 +    int                     index;
++    void                   *log_parent;
++    char                    log_name[32];
++    char                   *name;
 +    AVFilterContext        *filter;
 +} OutputFilterPriv;
 +
@@ -1742,7 +1790,8 @@ index 00000000..8d9aa854
 +
 +void print_json_stream_maps(void)
 +{
-+    int i, j;
++    AVFilterGraph **filtergraphs = NULL;
++    int i, j, ret, nb_filtergraphs = 0;
 +    AVBPrint buf;
 +
 +    if(print_jsonstats != 1) {
@@ -1754,11 +1803,39 @@ index 00000000..8d9aa854
 +    av_bprintf(&buf, "ffmpeg.mapping:{");
 +    av_bprintf(&buf, "\"graphs\":[");
 +
-+    for(i = 0; i < nb_filtergraphs; i++) {
-+        FilterGraph *fg = filtergraphs[i];
-+        const FilterGraphPriv *fgp = cfgp_from_cfg(fg);
++    // Collect all filtergraphs
++    for (InputStream *ist = ist_iter(NULL); ist; ist = ist_iter(ist)) {
++        for(i = 0; i < ist->nb_filters; i++) {
++            int found = 0;
++            InputFilter *f = ist->filters[i];
++            const FilterGraphPriv *fgp = cfgp_from_cfg(f->graph);
 +
-+        print_json_graph(&buf, fg->index, fgp->graph);
++            if(fgp->graph->nb_filters == 0) {
++                continue;
++            }
++
++            // Check if we already have this filtergraph
++            for(j = 0; j < nb_filtergraphs; j++) {
++                if(filtergraphs[j] == fgp->graph) {
++                    found = 1;
++                    break;
++                }
++            }
++
++            if(found == 1) {
++                continue;
++            }
++
++            ret = av_dynarray_add_nofree(&filtergraphs, &nb_filtergraphs, fgp->graph);
++            if(ret < 0) {
++                break;
++            }
++        }
++    }
++
++    // Print filtergraphs
++    for(i = 0; i < nb_filtergraphs; i++) {
++        print_json_graph(&buf, i, filtergraphs[i]);
 +    }
 +
 +    if(buf.str[buf.len-1] == ',') {
@@ -1775,44 +1852,29 @@ index 00000000..8d9aa854
 +    for (InputStream *ist = ist_iter(NULL); ist; ist = ist_iter(ist)) {
 +        for(i = 0; i < ist->nb_filters; i++) {
 +            InputFilter *f = ist->filters[i];
++            InputFilterPriv *ifp = ifp_from_ifilter(f);
++            AVFilterContext *ctx = ifp->filter;
 +            const FilterGraphPriv *fgp = cfgp_from_cfg(f->graph);
++            int fgindex = -1;
 +
-+            if (fgp->graph->nb_filters != 0) {
-+                InputFilterPriv *ifp = ifp_from_ifilter(f);
-+                AVFilterContext *ctx = ifp->filter;
-+
-+                av_bprintf(&buf,
-+                    "{\"input\":{\"index\":%d,\"stream\":%d},\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":null},",
-+                    ist->file->index,
-+                    ist->st->index,
-+                    f->graph->index,
-+                    (uintptr_t)ctx,
-+                    ctx->name);
++            for(j = 0; j < nb_filtergraphs; j++) {
++                if(filtergraphs[j] == fgp->graph) {
++                    fgindex = j;
++                    break;
++                }
 +            }
-+        }
-+    }
 +
-+    for(i = 0; i < nb_filtergraphs; i++) {
-+        FilterGraph *fg = filtergraphs[i];
-+        const FilterGraphPriv *fgp = cfgp_from_cfg(fg);
-+
-+        if(fgp->graph->nb_filters == 0) {
-+            continue;
-+        }
-+
-+        for(j = 0; j < fg->nb_outputs; j++) {
-+            OutputFilter *of = fg->outputs[j];
-+            OutputStream *ost = of->ost;
-+            OutputFilterPriv *ofp = ofp_from_ofilter(of);
-+            AVFilterContext *ctx = ofp->filter;
++            if(fgindex == -1) {
++                continue;
++            }
 +
 +            av_bprintf(&buf,
-+                "{\"input\":null,\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}},",
-+                fg->index,
++                "{\"input\":{\"index\":%d,\"stream\":%d},\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":null},",
++                ist->file->index,
++                ist->st->index,
++                fgindex,
 +                (uintptr_t)ctx,
-+                ctx->name,
-+                ost->file->index,
-+                ost->index);
++                ctx->name);
 +        }
 +    }
 +
@@ -1829,8 +1891,16 @@ index 00000000..8d9aa854
 +        if(ost->filter && ost->filter->graph) {
 +            FilterGraph *fg = ost->filter->graph;
 +            const FilterGraphPriv *fgp = cfgp_from_cfg(fg);
++            int fgindex = -1;
 +
-+            if(fgp->graph->nb_filters == 0) {
++            for(j = 0; j < nb_filtergraphs; j++) {
++                if(filtergraphs[j] == fgp->graph) {
++                    fgindex = j;
++                    break;
++                }
++            }
++
++            if(fgindex == -1) {
 +                av_bprintf(&buf,
 +                    "{\"input\":{\"index\":%d,\"stream\":%d},\"output\":{\"index\":%d,\"stream\":%d},\"copy\":%s},",
 +                    ost->ist->file->index,
@@ -1838,6 +1908,17 @@ index 00000000..8d9aa854
 +                    ost->file->index,
 +                    ost->index,
 +                    !ost->enc ? "true" : "false");
++            } else {
++                OutputFilterPriv *ofp = ofp_from_ofilter(ost->filter);
++                AVFilterContext *ctx = ofp->filter;
++
++                av_bprintf(&buf,
++                "{\"input\":null,\"graph\":{\"index\":%d,\"id\":\"%"PRIxPTR"\",\"name\":\"%s\"},\"output\":{\"index\":%d,\"stream\":%d}},",
++                    fgindex,
++                    (uintptr_t)ctx,
++                    ctx->name,
++                    ost->file->index,
++                    ost->index);
 +            }
 +
 +            continue;
@@ -1864,6 +1945,8 @@ index 00000000..8d9aa854
 +
 +    av_bprint_finalize(&buf, NULL);
 +
++    av_freep(&filtergraphs);
++
 +    return;
 +}
 diff --git a/fftools/ffmpeg_json.h b/fftools/ffmpeg_json.h
@@ -1889,7 +1972,7 @@ index 00000000..becf6b7f
 +
 +#endif /* FFTOOLS_FFMPEG_JSON_H */
 diff --git a/fftools/ffmpeg_mux.c b/fftools/ffmpeg_mux.c
-index e8e5c677..a52f14e9 100644
+index 71ff9b45..698c4236 100644
 --- a/fftools/ffmpeg_mux.c
 +++ b/fftools/ffmpeg_mux.c
 @@ -43,7 +43,12 @@ typedef struct MuxThreadContext {
@@ -1959,7 +2042,7 @@ index e8e5c677..a52f14e9 100644
  
      if (ms->stats.io)
 diff --git a/fftools/ffmpeg_mux.h b/fftools/ffmpeg_mux.h
-index 16af6d38..a4f8ecb3 100644
+index 22d728a9..3cc2364c 100644
 --- a/fftools/ffmpeg_mux.h
 +++ b/fftools/ffmpeg_mux.h
 @@ -75,6 +75,18 @@ typedef struct MuxStream {
@@ -1978,10 +2061,10 @@ index 16af6d38..a4f8ecb3 100644
 +    int64_t         nsamples_average;
 +    double          sum_framerate, min_framerate, max_framerate, avg_framerate;
 +    double          sum_gopsize, min_gopsize, max_gopsize, avg_gopsize;
- } MuxStream;
- 
- typedef struct Muxer {
-@@ -104,10 +116,7 @@ typedef struct Muxer {
+ #if FFMPEG_OPT_VSYNC_DROP
+     int             ts_drop;
+ #endif
+@@ -112,10 +124,7 @@ typedef struct Muxer {
  } Muxer;
  
  int mux_check_init(void *arg);
@@ -1995,7 +2078,7 @@ index 16af6d38..a4f8ecb3 100644
  
  #endif /* FFTOOLS_FFMPEG_MUX_H */
 diff --git a/fftools/ffmpeg_opt.c b/fftools/ffmpeg_opt.c
-index 4b3f9789..544bd29d 100644
+index f639a1cf..cb893874 100644
 --- a/fftools/ffmpeg_opt.c
 +++ b/fftools/ffmpeg_opt.c
 @@ -28,7 +28,9 @@
@@ -2007,16 +2090,8 @@ index 4b3f9789..544bd29d 100644
 +#include "ffmpeg_json.h"
  #include "cmdutils.h"
  #include "opt_common.h"
- #include "sync_queue.h"
-@@ -53,6 +55,7 @@
- #include "libavutil/parseutils.h"
- #include "libavutil/pixdesc.h"
- #include "libavutil/pixfmt.h"
-+#include "libavutil/bprint.h"
  
- HWDevice *filter_hw_device;
- 
-@@ -77,6 +80,7 @@ int debug_ts          = 0;
+@@ -71,6 +73,7 @@ int debug_ts          = 0;
  int exit_on_error     = 0;
  int abort_on_flags    = 0;
  int print_stats       = -1;
@@ -2024,7 +2099,7 @@ index 4b3f9789..544bd29d 100644
  int stdin_interaction = 1;
  float max_error_rate  = 2.0/3;
  char *filter_nbthreads;
-@@ -1579,6 +1583,9 @@ const OptionDef options[] = {
+@@ -1695,6 +1698,9 @@ const OptionDef options[] = {
      { "stats",               OPT_TYPE_BOOL, 0,
          { &print_stats },
          "print progress report during encoding", },
@@ -2035,7 +2110,7 @@ index 4b3f9789..544bd29d 100644
          { .func_arg = opt_stats_period },
          "set the period at which ffmpeg updates stats and -progress output", "time" },
 
-base-commit: 9f0f680f9ab1ca72edd94de42aef12209c11a6b2
+base-commit: e1601d14100f6c7d088eba676d9555118ca94931
 -- 
-2.39.3 (Apple Git-146)
+2.39.5 (Apple Git-154)
 

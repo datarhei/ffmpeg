@@ -1,12 +1,12 @@
-From 5a2b6b0c5c700a56ea37c62aaebb57ffe2ad8d1f Mon Sep 17 00:00:00 2001
+From 4609c8356bfbb063a6111aac4c7fa090099aa05b Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Fri, 26 Jul 2024 16:59:08 +0200
-Subject: [PATCH v6] HLS extensions (ffmpeg 7.0)
+Date: Wed, 16 Oct 2024 14:47:06 +0200
+Subject: [PATCH v1] hls (7.1.0)
 
 ---
- README.HLS.md        | 48 ++++++++++++++++++++++++
- libavformat/hlsenc.c | 87 +++++++++++++++++++++++++++++++++++++++++---
- 2 files changed, 130 insertions(+), 5 deletions(-)
+ README.HLS.md        | 48 ++++++++++++++++++++++++++++++++++
+ libavformat/hlsenc.c | 62 ++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 110 insertions(+)
  create mode 100644 README.HLS.md
 
 diff --git a/README.HLS.md b/README.HLS.md
@@ -64,10 +64,10 @@ index 00000000..5462338b
 +
 +In the command, the `-var_stream_map` option had the value `v:0,a:0 v:1,a:1`.
 diff --git a/libavformat/hlsenc.c b/libavformat/hlsenc.c
-index 2202ce64..1660cace 100644
+index 1e932b7b..7b76a227 100644
 --- a/libavformat/hlsenc.c
 +++ b/libavformat/hlsenc.c
-@@ -123,6 +123,7 @@ typedef struct VariantStream {
+@@ -125,6 +125,7 @@ typedef struct VariantStream {
      AVIOContext *out;
      AVIOContext *out_single_file;
      int packets_written;
@@ -75,7 +75,7 @@ index 2202ce64..1660cace 100644
      int init_range_length;
      uint8_t *temp_buffer;
      uint8_t *init_buffer;
-@@ -137,6 +138,8 @@ typedef struct VariantStream {
+@@ -139,6 +140,8 @@ typedef struct VariantStream {
      double dpp;           // duration per packet
      int64_t start_pts;
      int64_t end_pts;
@@ -84,56 +84,24 @@ index 2202ce64..1660cace 100644
      int64_t video_lastpos;
      int64_t video_keyframe_pos;
      int64_t video_keyframe_size;
-@@ -1374,7 +1377,7 @@ static int create_master_playlist(AVFormatContext *s,
-     AVStream *vid_st, *aud_st;
-     AVDictionary *options = NULL;
-     unsigned int i, j;
--    int ret, bandwidth;
-+    int ret, bandwidth, st_bandwidth, est_bandwidth;
-     const char *m3u8_rel_name = NULL;
-     const char *vtt_m3u8_rel_name = NULL;
-     const char *ccgroup;
-@@ -1486,10 +1489,35 @@ static int create_master_playlist(AVFormatContext *s,
+@@ -1507,6 +1510,16 @@ static int create_master_playlist(AVFormatContext *s,
+                 bandwidth += get_stream_bit_rate(vid_st);
+             if (aud_st)
+                 bandwidth += get_stream_bit_rate(aud_st);
++
++            if (bandwidth == 0) {
++                // Estimate bandwidth
++                bandwidth = (int)round((double)vs->bytes_written / (av_q2d(AV_TIME_BASE_Q) * (vs->scaled_cur_pts - vs->scaled_start_pts)) * 8);
++
++                // Reset counters
++                vs->bytes_written = 0;
++                vs->scaled_start_pts = vs->scaled_cur_pts;
++            }
++
+             bandwidth += bandwidth / 10;
          }
  
-         bandwidth = 0;
--        if (vid_st)
--            bandwidth += get_stream_bit_rate(vid_st);
--        if (aud_st)
--            bandwidth += get_stream_bit_rate(aud_st);
-+        est_bandwidth = 0;
-+
-+        if (vid_st) {
-+            st_bandwidth = get_stream_bit_rate(vid_st);
-+            if (st_bandwidth == 0) {
-+                est_bandwidth = 1;
-+            } else {
-+                bandwidth += st_bandwidth;
-+            }
-+        }
-+        if (aud_st) {
-+            st_bandwidth = get_stream_bit_rate(aud_st);
-+            if (st_bandwidth == 0) {
-+                est_bandwidth = 1;
-+            } else {
-+                bandwidth += st_bandwidth;
-+            }
-+        }
-+
-+        if (est_bandwidth != 0) {
-+            // Estimate bandwidth
-+            bandwidth = (int)round((double)vs->bytes_written / (av_q2d(AV_TIME_BASE_Q) * (vs->scaled_cur_pts - vs->scaled_start_pts)) * 8);
-+
-+            // Reset counters
-+            vs->bytes_written = 0;
-+            vs->scaled_start_pts = vs->scaled_cur_pts;
-+        }
-+
-+        // Add 10% of the bandwidth to itself
-         bandwidth += bandwidth / 10;
- 
-         ccgroup = NULL;
-@@ -2461,6 +2489,19 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -2475,6 +2488,19 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
          return AVERROR(ENOMEM);
      }
  
@@ -153,7 +121,7 @@ index 2202ce64..1660cace 100644
      end_pts = hls->recording_time * vs->number;
  
      if (vs->sequence - vs->nb_entries > hls->start_sequence && hls->init_time > 0) {
-@@ -2681,6 +2722,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+@@ -2700,6 +2726,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
      }
  
      vs->packets_written++;
@@ -161,7 +129,7 @@ index 2202ce64..1660cace 100644
      if (oc->pb) {
          ret = ff_write_chained(oc, stream_index, pkt, s, 0);
          vs->video_keyframe_size += pkt->size;
-@@ -2868,6 +2910,36 @@ failed:
+@@ -2888,6 +2915,36 @@ failed:
      return 0;
  }
  
@@ -198,7 +166,7 @@ index 2202ce64..1660cace 100644
  
  static int hls_init(AVFormatContext *s)
  {
-@@ -2975,6 +3047,8 @@ static int hls_init(AVFormatContext *s)
+@@ -2995,6 +3052,8 @@ static int hls_init(AVFormatContext *s)
          vs->sequence  = hls->start_sequence;
          vs->start_pts = AV_NOPTS_VALUE;
          vs->end_pts   = AV_NOPTS_VALUE;
@@ -207,7 +175,7 @@ index 2202ce64..1660cace 100644
          vs->current_segment_final_filename_fmt[0] = '\0';
          vs->initial_prog_date_time = initial_program_date_time;
  
-@@ -3117,6 +3191,9 @@ static int hls_init(AVFormatContext *s)
+@@ -3137,6 +3196,9 @@ static int hls_init(AVFormatContext *s)
          vs->number++;
      }
  
@@ -218,7 +186,7 @@ index 2202ce64..1660cace 100644
  }
  
 
-base-commit: 9f0f680f9ab1ca72edd94de42aef12209c11a6b2
+base-commit: e1601d14100f6c7d088eba676d9555118ca94931
 -- 
-2.39.3 (Apple Git-146)
+2.39.5 (Apple Git-154)
 
