@@ -44,6 +44,10 @@ RUN apt-get update -y && \
   libfdk-aac-dev \
   libharfbuzz-dev \
   libxml2-dev \
+  libxcb1-dev \
+  libxcb-xfixes0-dev \
+  libxcb-shm0-dev \
+  libxcb-shape0-dev \
   zlib1g-dev
 
 # install and patch ffmpeg
@@ -92,6 +96,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libdav1d \
   --enable-librav1e \
   --enable-libaom \
+  --enable-libxcb \
   --disable-ffplay \
   --disable-ffprobe \
   --disable-debug \

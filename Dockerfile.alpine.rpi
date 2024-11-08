@@ -48,6 +48,7 @@ RUN apk add -U \
   dav1d-dev \
   rav1e-dev \
   aom-dev \
+  libxcb-dev \
   alsa-lib-dev \
   v4l-utils-dev \
   raspberrypi-dev \
@@ -97,6 +98,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libdav1d \
   --enable-librav1e \
   --enable-libaom \
+  --enable-libxcb \
   --disable-ffplay \
   --disable-debug \
   --disable-doc \
