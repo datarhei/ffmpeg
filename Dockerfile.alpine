@@ -48,6 +48,7 @@ RUN apk add --update \
   dav1d-dev \
   rav1e-dev \
   aom-dev \
+  libxcb-dev \
   alsa-lib-dev \
   v4l-utils-dev
 
@@ -88,6 +89,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libdav1d \
   --enable-librav1e \
   --enable-libaom \
+  --enable-libxcb \
   --disable-ffplay \
   --disable-debug \
   --disable-doc \
