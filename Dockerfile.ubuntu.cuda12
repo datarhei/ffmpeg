@@ -79,8 +79,11 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-openssl \
   --enable-libxml2 \
   --enable-cuda \
-  --enable-cuvid \
+  --enable-cuda-llvm \
+  --enable-cuda-nvcc \
+  --enable-nvdec \
   --enable-nvenc \
+  --enable-cuvid \
   --enable-libnpp \
   --enable-libv4l2 \
   --enable-libfreetype \
