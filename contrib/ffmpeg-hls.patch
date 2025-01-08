@@ -1,12 +1,12 @@
-From 4609c8356bfbb063a6111aac4c7fa090099aa05b Mon Sep 17 00:00:00 2001
+From cd9b080dde5028233b8b827493b973c95896f267 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 16 Oct 2024 14:47:06 +0200
-Subject: [PATCH v1] hls (7.1.0)
+Date: Wed, 8 Jan 2025 13:29:31 +0100
+Subject: [PATCH v2] hls (7.1.0)
 
 ---
- README.HLS.md        | 48 ++++++++++++++++++++++++++++++++++
- libavformat/hlsenc.c | 62 ++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 110 insertions(+)
+ README.HLS.md        | 48 ++++++++++++++++++++++++++++
+ libavformat/hlsenc.c | 75 ++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 123 insertions(+)
  create mode 100644 README.HLS.md
 
 diff --git a/README.HLS.md b/README.HLS.md
@@ -64,7 +64,7 @@ index 00000000..5462338b
 +
 +In the command, the `-var_stream_map` option had the value `v:0,a:0 v:1,a:1`.
 diff --git a/libavformat/hlsenc.c b/libavformat/hlsenc.c
-index 1e932b7b..7b76a227 100644
+index 1e932b7b..c53b2f18 100644
 --- a/libavformat/hlsenc.c
 +++ b/libavformat/hlsenc.c
 @@ -125,6 +125,7 @@ typedef struct VariantStream {
@@ -129,7 +129,7 @@ index 1e932b7b..7b76a227 100644
      if (oc->pb) {
          ret = ff_write_chained(oc, stream_index, pkt, s, 0);
          vs->video_keyframe_size += pkt->size;
-@@ -2888,6 +2915,36 @@ failed:
+@@ -2888,6 +2915,49 @@ failed:
      return 0;
  }
  
@@ -138,35 +138,48 @@ index 1e932b7b..7b76a227 100644
 +    HLSContext *hls = s->priv_data;
 +    VariantStream *vs = NULL;
 +    AVStream *avs = NULL;
++    AVBPrint buf;
 +
-+    fprintf(stderr, "hls.streammap:{\"address\":\"%s\",\"variants\":[", s->url);
++    av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
++
++    av_bprintf(&buf, "hls.streammap:{\"address\":\"%s\",\"variants\":[", s->url);
 +    for (i = 0; i < hls->nb_varstreams; i++) {
 +        vs = &hls->var_streams[i];
 +
-+        fprintf(stderr, "{\"variant\":%d,\"address\":\"%s\",\"streams\":[", i, vs->m3u8_name);
++        av_bprintf(&buf, "{\"variant\":%d,\"address\":\"%s\",\"streams\":[", i, vs->m3u8_name);
 +        for (j = 0; j < vs->nb_streams; j++) {
 +            avs = vs->streams[j];
 +
-+            fprintf(stderr, "%d", avs->index);
++            av_bprintf(&buf, "%d", avs->index);
 +
 +            if (j != vs->nb_streams-1) {
-+                fprintf(stderr, ",");
++                av_bprintf(&buf, ",");
 +            }
 +        }
-+        fprintf(stderr, "]}");
++        av_bprintf(&buf, "]}");
 +
 +        if (i != hls->nb_varstreams-1) {
-+            fprintf(stderr, ",");
++            av_bprintf(&buf, ",");
 +        }
 +    }
-+    fprintf(stderr, "]}\n");
++    av_bprintf(&buf, "]}\n");
++
++    if (AV_LOG_INFO > av_log_get_level()) {
++        fprintf(stderr, "%s\n", buf.str);
++    } else {
++        av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    }
++
++    fflush(stderr);
++
++    av_bprint_finalize(&buf, NULL);
 +
 +    return;
 +}
  
  static int hls_init(AVFormatContext *s)
  {
-@@ -2995,6 +3052,8 @@ static int hls_init(AVFormatContext *s)
+@@ -2995,6 +3065,8 @@ static int hls_init(AVFormatContext *s)
          vs->sequence  = hls->start_sequence;
          vs->start_pts = AV_NOPTS_VALUE;
          vs->end_pts   = AV_NOPTS_VALUE;
@@ -175,7 +188,7 @@ index 1e932b7b..7b76a227 100644
          vs->current_segment_final_filename_fmt[0] = '\0';
          vs->initial_prog_date_time = initial_program_date_time;
  
-@@ -3137,6 +3196,9 @@ static int hls_init(AVFormatContext *s)
+@@ -3137,6 +3209,9 @@ static int hls_init(AVFormatContext *s)
          vs->number++;
      }
  

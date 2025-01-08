@@ -1,7 +1,7 @@
-From 63a700576177b1207db038af4b47eac07491be27 Mon Sep 17 00:00:00 2001
+From 70ca589dd67895bb87b403d97f899d08f9999b08 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 16 Oct 2024 14:49:25 +0200
-Subject: [PATCH v1] progress (7.1.0)
+Date: Wed, 8 Jan 2025 13:29:22 +0100
+Subject: [PATCH v2] progress (7.1.0)
 
 ---
  README.PROGRESS.md      | 759 ++++++++++++++++++++++++++++++++++++++++
@@ -11,12 +11,12 @@ Subject: [PATCH v1] progress (7.1.0)
  fftools/ffmpeg_demux.c  | 149 +++-----
  fftools/ffmpeg_demux.h  | 163 +++++++++
  fftools/ffmpeg_filter.c |  10 +-
- fftools/ffmpeg_json.c   | 649 ++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_json.c   | 668 +++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_json.h   |  16 +
  fftools/ffmpeg_mux.c    |  50 ++-
  fftools/ffmpeg_mux.h    |  19 +-
  fftools/ffmpeg_opt.c    |   6 +
- 12 files changed, 1744 insertions(+), 114 deletions(-)
+ 12 files changed, 1763 insertions(+), 114 deletions(-)
  create mode 100644 README.PROGRESS.md
  create mode 100644 fftools/ffmpeg_demux.h
  create mode 100644 fftools/ffmpeg_json.c
@@ -1296,10 +1296,10 @@ index 7ec328e0..814b5761 100644
  }
 diff --git a/fftools/ffmpeg_json.c b/fftools/ffmpeg_json.c
 new file mode 100644
-index 00000000..3ff956c1
+index 00000000..b63110e1
 --- /dev/null
 +++ b/fftools/ffmpeg_json.c
-@@ -0,0 +1,649 @@
+@@ -0,0 +1,668 @@
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -1313,6 +1313,7 @@ index 00000000..3ff956c1
 +#include "libavutil/bprint.h"
 +#include "libavutil/channel_layout.h"
 +#include "libavutil/dict.h"
++#include "libavutil/log.h"
 +#include "libavutil/mem.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/pixdesc.h"
@@ -1411,7 +1412,12 @@ index 00000000..3ff956c1
 +
 +    av_bprintf(&buf, "]");
 +
-+    fprintf(stderr, "%s\n", buf.str);
++    if (AV_LOG_INFO > av_log_get_level()) {
++        fprintf(stderr, "%s\n", buf.str);
++    } else {
++        av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    }
++
 +    fflush(stderr);
 +
 +    av_bprint_finalize(&buf, NULL);
@@ -1502,7 +1508,12 @@ index 00000000..3ff956c1
 +
 +    av_bprintf(&buf, "]");
 +
-+    fprintf(stderr, "%s\n", buf.str);
++    if (AV_LOG_INFO > av_log_get_level()) {
++        fprintf(stderr, "%s\n", buf.str);
++    } else {
++        av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    }
++
 +    fflush(stderr);
 +
 +    av_bprint_finalize(&buf, NULL);
@@ -1669,7 +1680,11 @@ index 00000000..3ff956c1
 +    av_bprintf(&buf, "}");
 +
 +    if(print_jsonstats || is_last_report) {
-+        fprintf(stderr, "%s\n", buf.str);
++        if (AV_LOG_INFO > av_log_get_level()) {
++            fprintf(stderr, "%s\n", buf.str);
++        } else {
++            av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++        }
 +        fflush(stderr);
 +    }
 +
@@ -1940,7 +1955,11 @@ index 00000000..3ff956c1
 +
 +    av_bprintf(&buf, "]}");
 +
-+    fprintf(stderr, "%s\n", buf.str);
++    if (AV_LOG_INFO > av_log_get_level()) {
++        fprintf(stderr, "%s\n", buf.str);
++    } else {
++        av_log(NULL, AV_LOG_INFO, "%s\n", buf.str);
++    }
 +    fflush(stderr);
 +
 +    av_bprint_finalize(&buf, NULL);
