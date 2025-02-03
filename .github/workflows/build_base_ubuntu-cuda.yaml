@@ -12,8 +12,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuda: 11
-            platforms: linux/amd64
           - cuda: 12
             platforms: linux/amd64
     steps:
