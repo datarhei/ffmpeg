@@ -20,10 +20,19 @@ RUN apt-get update -y && \
   openssl \
   libssl-dev \
   cmake \
+  automake \
+  meson \
   yasm \
   build-essential \
   libtool \
   autoconf \
+  xorg \
+  xorg-dev \
+  openbox \
+  libx11-dev \
+  libgl1 \
+  libglx-mesa0 \
+  libdrm-dev \
   libv4l-dev \
   libva-drm2 \
   libva2 \
@@ -52,6 +61,33 @@ RUN apt-get update -y && \
   libxcb-shm0-dev \
   libxcb-shape0-dev \
   zlib1g-dev
+
+# Build the newest libva
+RUN git clone https://github.com/intel/libva.git /tmp/libva && \
+    cd /tmp/libva && \
+    ./autogen.sh --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu && \
+    make -j$(nproc) && \
+    make install
+
+# Build the newest gmmlib (dependency for media-driver)
+RUN git clone https://github.com/intel/gmmlib.git /tmp/gmmlib && \
+    cd /tmp/gmmlib && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr \
+          -DCMAKE_INSTALL_LIBDIR=/usr/lib/x86_64-linux-gnu \
+          -DCMAKE_BUILD_TYPE=ReleaseInternal .. && \
+    make -j$(nproc) && \
+    make install
+
+# Build the newest media-driver
+RUN git clone https://github.com/intel/media-driver.git /tmp/media-driver && \
+    cd /tmp/media-driver && \
+    mkdir build_media && cd build_media && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr \
+          -DCMAKE_INSTALL_LIBDIR=/usr/lib/x86_64-linux-gnu \
+          ../ && \
+    make -j$(nproc) && \
+    make install
 
 # install and patch ffmpeg
 RUN mkdir -p /dist && cd /dist && \
@@ -105,8 +141,11 @@ FROM $DEPLOY_IMAGE
 
 COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=builder /ffmpeglibs /ffmpeglibs
+COPY --from=builder /usr/lib/x86_64-linux-gnu usr/lib/x86_64-linux-gnu
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+ENV LD_RUN_PATH=/usr/lib/x86_64-linux-gnu
 
 RUN echo "/ffmpeglibs" > /etc/ld.so.conf.d/ffmpeg.conf && \
   ldconfig && \
@@ -118,11 +157,8 @@ RUN echo "/ffmpeglibs" > /etc/ld.so.conf.d/ffmpeg.conf && \
   fbset \
   x265 \
   libssl3 \
-  libva-drm2 \
-  libva2 \
   zlib1g \
   i965-va-driver-shaders \
-  intel-media-va-driver-non-free \
   libasound2-dev && \
   ffmpeg -buildconf
 
