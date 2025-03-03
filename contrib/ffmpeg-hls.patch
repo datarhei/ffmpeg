@@ -1,12 +1,12 @@
-From cd9b080dde5028233b8b827493b973c95896f267 Mon Sep 17 00:00:00 2001
+From 763304129a1fb2e347c870b1250b90a696ee4317 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 8 Jan 2025 13:29:31 +0100
-Subject: [PATCH v2] hls (7.1.0)
+Date: Mon, 20 Jan 2025 17:32:20 +0100
+Subject: [PATCH v3] hls (7.1.0)
 
 ---
- README.HLS.md        | 48 ++++++++++++++++++++++++++++
- libavformat/hlsenc.c | 75 ++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 123 insertions(+)
+ README.HLS.md        | 48 +++++++++++++++++++++++++++
+ libavformat/hlsenc.c | 79 ++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 125 insertions(+), 2 deletions(-)
  create mode 100644 README.HLS.md
 
 diff --git a/README.HLS.md b/README.HLS.md
@@ -64,7 +64,7 @@ index 00000000..5462338b
 +
 +In the command, the `-var_stream_map` option had the value `v:0,a:0 v:1,a:1`.
 diff --git a/libavformat/hlsenc.c b/libavformat/hlsenc.c
-index 1e932b7b..c53b2f18 100644
+index 1e932b7b..11a3f0dd 100644
 --- a/libavformat/hlsenc.c
 +++ b/libavformat/hlsenc.c
 @@ -125,6 +125,7 @@ typedef struct VariantStream {
@@ -121,6 +121,17 @@ index 1e932b7b..c53b2f18 100644
      end_pts = hls->recording_time * vs->number;
  
      if (vs->sequence - vs->nb_entries > hls->start_sequence && hls->init_time > 0) {
+@@ -2523,8 +2549,8 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
+     }
+ 
+     can_split = can_split && (pkt->pts - vs->end_pts > 0);
+-    if (vs->packets_written && can_split && av_compare_ts(pkt->pts - vs->start_pts, st->time_base,
+-                                                          end_pts, AV_TIME_BASE_Q) >= 0) {
++    if (vs->packets_written && can_split && av_compare_ts(pkt->pts - vs->end_pts, st->time_base,
++                                                          hls->recording_time, AV_TIME_BASE_Q) >= 0) {
+         int64_t new_start_pos;
+         int byterange_mode = (hls->flags & HLS_SINGLE_FILE) || (hls->max_seg_size > 0);
+         double cur_duration;
 @@ -2700,6 +2726,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
      }
  

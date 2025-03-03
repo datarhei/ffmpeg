@@ -9,6 +9,13 @@ on:
 jobs:
   docker:
     runs-on: [self-hosted]
+    strategy:
+      matrix:
+        include:
+          - ffmpeg_version: "7.1.1"
+            os: ubuntu
+            os_version: "24.04"
+            platforms: linux/amd64
     steps:
       - name: Get current date
         run: |
@@ -20,13 +27,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-
-      - uses: cardinalby/export-env-action@v2
-        with:
-          envFile: "Build.ubuntu.vaapi.env"
-          export: "true"
-          expandWithJobEnv: "true"
-          expand: "true"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@master
@@ -51,13 +51,12 @@ jobs:
           context: .
           file: ./Dockerfile.ubuntu.vaapi
           build-args: |
-            BUILD_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
-            DEPLOY_IMAGE=${{ env.OS_NAME }}:${{ env.OS_VERSION }}
+            BUILD_IMAGE=${{ matrix.os }}:${{ matrix.os_version }}
+            DEPLOY_IMAGE=${{ matrix.os }}:${{ matrix.os_version }}
             BUILD_DATE=${{ env.CURRENT_DATE }}
             BUILD_COMMIT=${{ env.CURRENT_COMMIT }}
-            FFMPEG_VERSION=${{ env.FFMPEG_VERSION }}
-          platforms: linux/amd64
+            FFMPEG_VERSION=${{ matrix.ffmpeg_version }}
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: |
-            datarhei/base:${{ env.OS_NAME }}-ffmpeg-vaapi-${{ env.OS_VERSION }}-${{ env.FFMPEG_VERSION }}
-            datarhei/base:ffmpeg${{ env.FFMPEG_VERSION }}-vaapi-${{ env.OS_NAME }}${{ env.OS_VERSION }}
+            datarhei/base:ffmpeg${{ matrix.ffmpeg_version }}-vaapi-${{ matrix.os }}${{ matrix.os_version }}
