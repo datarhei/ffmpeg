@@ -1,22 +1,25 @@
-From 70ca589dd67895bb87b403d97f899d08f9999b08 Mon Sep 17 00:00:00 2001
+From 399e6b27c4b308352554d3ef84329c854330fe83 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Wed, 8 Jan 2025 13:29:22 +0100
-Subject: [PATCH v2] progress (7.1.0)
+Date: Thu, 21 Aug 2025 11:42:34 +0200
+Subject: [PATCH v1] progress (7.1.1)
 
 ---
- README.PROGRESS.md      | 759 ++++++++++++++++++++++++++++++++++++++++
+ README.PROGRESS.md      | 759 ++++++++++++++++++++++++++++++++++
  fftools/Makefile        |   1 +
  fftools/ffmpeg.c        |  35 +-
  fftools/ffmpeg.h        |   1 +
- fftools/ffmpeg_demux.c  | 149 +++-----
- fftools/ffmpeg_demux.h  | 163 +++++++++
+ fftools/ffmpeg_demux.c  | 149 ++-----
+ fftools/ffmpeg_demux.h  | 163 ++++++++
  fftools/ffmpeg_filter.c |  10 +-
- fftools/ffmpeg_json.c   | 668 +++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_json.c   | 888 ++++++++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_json.h   |  16 +
  fftools/ffmpeg_mux.c    |  50 ++-
  fftools/ffmpeg_mux.h    |  19 +-
  fftools/ffmpeg_opt.c    |   6 +
- 12 files changed, 1763 insertions(+), 114 deletions(-)
+ fftools/ffmpeg_sched.c  |   6 +-
+ libavformat/fifo.c      |   7 +
+ libavformat/tee.c       |  15 +-
+ 15 files changed, 2006 insertions(+), 119 deletions(-)
  create mode 100644 README.PROGRESS.md
  create mode 100644 fftools/ffmpeg_demux.h
  create mode 100644 fftools/ffmpeg_json.c
@@ -1246,7 +1249,7 @@ index 00000000..709aba7a
 +#endif /* FFTOOLS_FFMPEG_DEMUX_H */
 \ No newline at end of file
 diff --git a/fftools/ffmpeg_filter.c b/fftools/ffmpeg_filter.c
-index 7ec328e0..814b5761 100644
+index 38c7676a..b2e68bd1 100644
 --- a/fftools/ffmpeg_filter.c
 +++ b/fftools/ffmpeg_filter.c
 @@ -21,6 +21,7 @@
@@ -1274,7 +1277,7 @@ index 7ec328e0..814b5761 100644
      av_freep(&fgp->nb_threads);
  
      av_frame_free(&fgp->frame);
-@@ -2019,6 +2023,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
+@@ -2024,6 +2028,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
              goto fail;
      }
  
@@ -1285,7 +1288,7 @@ index 7ec328e0..814b5761 100644
      return 0;
  fail:
      cleanup_filtergraph(fg, fgt);
-@@ -2917,7 +2925,7 @@ static void fg_thread_uninit(FilterGraphThread *fgt)
+@@ -2922,7 +2930,7 @@ static void fg_thread_uninit(FilterGraphThread *fgt)
      av_freep(&fgt->eof_in);
      av_freep(&fgt->eof_out);
  
@@ -1296,10 +1299,10 @@ index 7ec328e0..814b5761 100644
  }
 diff --git a/fftools/ffmpeg_json.c b/fftools/ffmpeg_json.c
 new file mode 100644
-index 00000000..b63110e1
+index 00000000..381e2566
 --- /dev/null
 +++ b/fftools/ffmpeg_json.c
-@@ -0,0 +1,668 @@
+@@ -0,0 +1,888 @@
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -1321,6 +1324,56 @@ index 00000000..b63110e1
 +#include "libavformat/avformat.h"
 +#include "libavformat/internal.h"
 +#include "libavcodec/avcodec.h"
++
++static void append_disposition(AVBPrint *buf, int disposition)
++{
++    av_bprintf(buf, "\"disposition\":[");
++
++    if (disposition & AV_DISPOSITION_DEFAULT)
++        av_bprintf(buf, "\"default\",");
++    if (disposition & AV_DISPOSITION_DUB)
++        av_bprintf(buf, "\"dub\",");
++    if (disposition & AV_DISPOSITION_ORIGINAL)
++        av_bprintf(buf, "\"original\",");
++    if (disposition & AV_DISPOSITION_COMMENT)
++        av_bprintf(buf, "\"comment\",");
++    if (disposition & AV_DISPOSITION_LYRICS)
++        av_bprintf(buf, "\"lyrics\",");
++    if (disposition & AV_DISPOSITION_KARAOKE)
++        av_bprintf(buf, "\"karaoke\",");
++    if (disposition & AV_DISPOSITION_FORCED)
++        av_bprintf(buf, "\"forced\",");
++    if (disposition & AV_DISPOSITION_HEARING_IMPAIRED)
++        av_bprintf(buf, "\"hearing impaired\",");
++    if (disposition & AV_DISPOSITION_VISUAL_IMPAIRED)
++        av_bprintf(buf, "\"visual impaired\",");
++    if (disposition & AV_DISPOSITION_CLEAN_EFFECTS)
++        av_bprintf(buf, "\"clean effects\",");
++    if (disposition & AV_DISPOSITION_ATTACHED_PIC)
++        av_bprintf(buf, "\"attached pic\",");
++    if (disposition & AV_DISPOSITION_TIMED_THUMBNAILS)
++        av_bprintf(buf, "\"timed thumbnails\",");
++    if (disposition & AV_DISPOSITION_CAPTIONS)
++        av_bprintf(buf, "\"captions\",");
++    if (disposition & AV_DISPOSITION_DESCRIPTIONS)
++        av_bprintf(buf, "\"descriptions\",");
++    if (disposition & AV_DISPOSITION_METADATA)
++        av_bprintf(buf, "\"metadata\",");
++    if (disposition & AV_DISPOSITION_DEPENDENT)
++        av_bprintf(buf, "\"dependent\",");
++    if (disposition & AV_DISPOSITION_STILL_IMAGE)
++        av_bprintf(buf, "\"still image\",");
++    if (disposition & AV_DISPOSITION_NON_DIEGETIC)
++        av_bprintf(buf, "\"non-diegetic\",");
++    if (disposition & AV_DISPOSITION_MULTILAYER)
++        av_bprintf(buf, "\"multilayer\",");
++
++    if(buf->str[buf->len-1] == ',') {
++        buf->len--;
++    }
++
++    av_bprintf(buf, "]");
++}
 +
 +/**
 + * Print all inputs in JSON format
@@ -1371,10 +1424,11 @@ index 00000000..b63110e1
 +                avcodec_get_name(st->codecpar->codec_id),
 +                st->codecpar->bit_rate / 1000);
 +            av_bprintf(&buf,
-+                "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d",
++                "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d,",
 +                duration,
 +                lang != NULL ? lang->value : "und",
 +                st->codecpar->profile, st->codecpar->level);
++            append_disposition(&buf, st->disposition);
 +
 +            av_free(url);
 +
@@ -1423,6 +1477,99 @@ index 00000000..b63110e1
 +    av_bprint_finalize(&buf, NULL);
 +}
 +
++typedef enum SlaveFailurePolicy {
++    ON_SLAVE_FAILURE_ABORT  = 1,
++    ON_SLAVE_FAILURE_IGNORE = 2
++} SlaveFailurePolicy;
++
++typedef struct TeeSlave {
++    AVFormatContext     *avf;
++    AVBSFContext       **bsfs;
++    SlaveFailurePolicy   on_fail;
++    int                  use_fifo;
++    AVDictionary        *fifo_options;
++    int                 *stream_map;
++    int                  header_written;
++    char                *id;
++    char                *filename;
++} TeeSlave;
++
++typedef struct TeeContext {
++    const AVClass *class;
++    unsigned       nb_slaves;
++    unsigned       nb_alive;
++    TeeSlave      *slaves;
++} TeeContext;
++
++/**
++ * Append all tee outputs for a context in JSON format
++ *
++ * @param buf The AVBPrint buffer to which the JSON output will be appended.
++ * @param ofctx The AVFormatContext for the output, which contains the TeeContext.
++ */
++static void append_outputs_tee(AVBPrint *buf, AVFormatContext *ofctx)
++{
++    TeeContext *tc;
++    const char *format_name, *base_format;
++    char       *address;
++
++    tc = (TeeContext *)ofctx->priv_data;
++    if (!tc || tc->nb_slaves == 0 || !tc->slaves) {
++        return;
++    }
++
++    av_bprintf(buf, ",\"tee\":[");
++
++    for (unsigned int i = 0; i < tc->nb_slaves; i++) {
++        uint8_t *fifo_fmt_opt = NULL;
++        TeeSlave *slave = &tc->slaves[i];
++        AVFormatContext *slave_ctx = slave->avf;
++
++        format_name = "";
++
++        if (slave_ctx && slave_ctx->oformat) {
++            base_format = slave_ctx->oformat->name ? slave_ctx->oformat->name : "";
++            format_name = base_format;
++
++            fifo_fmt_opt = NULL;
++            if (strcmp(base_format, "fifo") == 0) {
++                uint8_t *fifo_fmt_opt = NULL;
++
++                if (av_opt_get(slave_ctx->priv_data, "fifo_format", AV_OPT_SEARCH_CHILDREN | AV_OPT_ALLOW_NULL, &fifo_fmt_opt) >= 0) {
++                    if(fifo_fmt_opt && fifo_fmt_opt[0] != '\0') {
++                        format_name = (const char *)fifo_fmt_opt;
++                    }
++                }
++            }
++        }
++
++        address = NULL;
++        if (av_escape(&address,
++                slave->filename ? slave->filename : "",
++                "\\\"",
++                AV_ESCAPE_MODE_BACKSLASH,
++                AV_UTF8_FLAG_ACCEPT_ALL) < 0) {
++            address = av_strdup("-");
++        }
++
++        av_bprintf(buf, "{\"id\":\"%s\",\"address\":\"%s\",\"format\":\"%s\",\"fifo_enabled\":%s}",
++                   slave->id ? slave->id : "", address, format_name, slave->use_fifo == 1 ? "true" : "false");
++
++        av_free(address);
++        if (fifo_fmt_opt) {
++            av_free(fifo_fmt_opt);
++        }
++
++        if (i < tc->nb_slaves - 1) {
++            av_bprintf(buf, ",");
++        }
++    }
++
++    av_bprintf(buf, "]");
++
++    return;
++}
++
 +/**
 + * Print all outputs in JSON format
 + */
@@ -1465,13 +1612,14 @@ index 00000000..b63110e1
 +            ",",
 +            av_get_media_type_string(st->codecpar->codec_type),
 +            avcodec_get_name(st->codecpar->codec_id),
-+            !ost->enc ? "copy" : "unknown",
++            ost->enc_ctx ? (ost->enc_ctx->codec ? ost->enc_ctx->codec->name : "unknown") : "copy",
 +            st->codecpar->bit_rate / 1000);
 +        av_bprintf(&buf,
-+            "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d",
++            "\"duration_sec\":%f,\"language\":\"%s\",\"profile\":%d,\"level\":%d,",
 +            0.0,
 +            lang != NULL ? lang->value : "und",
 +            st->codecpar->profile, st->codecpar->level);
++        append_disposition(&buf, st->disposition);
 +
 +        av_free(url);
 +
@@ -1499,6 +1647,10 @@ index 00000000..b63110e1
 +                st->codecpar->ch_layout.nb_channels);
 +        }
 +
++        if (!strcmp(ctx->oformat->name, "tee")) {
++            append_outputs_tee(&buf, ctx);
++        }
++
 +        if(ost_iter(ost) == NULL) {
 +            av_bprintf(&buf, "}");
 +        } else {
@@ -1517,6 +1669,70 @@ index 00000000..b63110e1
 +    fflush(stderr);
 +
 +    av_bprint_finalize(&buf, NULL);
++
++    return;
++}
++
++typedef struct FifoContext {
++    const AVClass *class;
++    AVFormatContext *avf;
++
++    uint64_t total_recovery_attempts;
++    int status; // 0 = alive, 1 = restarting, 2 = failed
++} FifoContext;
++
++/**
++ * Append all tee outputs to output in JSON format
++ *
++ * @param buf The AVBPrint buffer to which the JSON output will be appended.
++ * @param ofc The AVFormatContext for the output, which contains the TeeContext.
++ */
++static void append_progress_tee(AVBPrint *buf, AVFormatContext *ofctx)
++{
++    TeeContext        *tc;
++
++    tc = (TeeContext *)ofctx->priv_data;
++    if (!tc || tc->nb_slaves == 0 || !tc->slaves) {
++        return;
++    }
++
++    av_bprintf(buf, ",\"tee\":[");
++
++    for (unsigned int i = 0; i < tc->nb_slaves; i++) {
++        const char *tee_state = "failed", *fifo_state = "";
++        uint64_t total_recovery_attempts = 0;
++        TeeSlave *slave = &tc->slaves[i];
++        AVFormatContext *slave_ctx = slave->avf;
++
++        if(slave_ctx && slave_ctx->oformat) {
++            tee_state = (slave_ctx->pb && slave_ctx->pb->error < 0) ? "failed" : "running";
++
++            if (!strcmp(slave_ctx->oformat->name, "fifo")) {
++                FifoContext *fifo_ctx = (FifoContext *)slave_ctx->priv_data;
++
++                switch(fifo_ctx->status) {
++                    case 0: fifo_state = "running"; break;
++                    case 1: fifo_state = "restarting"; break;
++                    case 2: fifo_state = "failed"; break;
++                    default: fifo_state = "";
++                }
++
++                total_recovery_attempts = fifo_ctx->total_recovery_attempts;
++            }
++        }
++
++        av_bprintf(buf,
++            "{\"state\":\"%s\",\"fifo_recovery_attempts_total\":%"PRIu64",\"fifo_state\":\"%s\"}",
++            tee_state,
++            total_recovery_attempts,
++            fifo_state);
++
++        if (i < tc->nb_slaves - 1) {
++            av_bprintf(buf, ",");
++        }
++    }
++
++    av_bprintf(buf, "]");
 +
 +    return;
 +}
@@ -1593,7 +1809,10 @@ index 00000000..b63110e1
 +
 +    av_bprintf(&buf, "\"outputs\":[");
 +    for (OutputStream *ost = ost_iter(NULL); ost; ost = ost_iter(ost)) {
-+        MuxStream *ms = ms_from_ost(ost);
++        MuxStream  *ms = ms_from_ost(ost);
++        OutputFile *of = output_files[ost->file->index];
++        Muxer      *mux = mux_from_of(of);
++        AVFormatContext *ctx = mux ? mux->fc : NULL;
 +
 +        q = -1;
 +        if(ost->enc) {
@@ -1638,6 +1857,10 @@ index 00000000..b63110e1
 +
 +        av_bprintf(&buf, "\"size_kb\":%.0f,\"size_bytes\":%" PRIu64 ",", stream_size / 1024.0, stream_size);
 +        av_bprintf(&buf, "\"extradata_size_bytes\":%d", 0);
++
++        if (ctx && ctx->oformat && !strcmp(ctx->oformat->name, "tee")) {
++            append_progress_tee(&buf, ctx);
++        }
 +
 +        if(ost_iter(ost) == NULL) {
 +            av_bprintf(&buf, "}");
@@ -1733,7 +1956,7 @@ index 00000000..b63110e1
 +                    avfilter_pad_get_name(link->srcpad, 0),
 +                    avfilter_pad_get_name(link->dstpad, 0));
 +                av_bprintf(buf,
-+                    "\"timebase\": \"%d/%d\",",
++                    "\"timebase\":\"%d/%d\",",
 +                    link->time_base.num,
 +                    link->time_base.den);
 +
@@ -2128,8 +2351,140 @@ index f639a1cf..cb893874 100644
      { "stats_period",        OPT_TYPE_FUNC, OPT_FUNC_ARG | OPT_EXPERT,
          { .func_arg = opt_stats_period },
          "set the period at which ffmpeg updates stats and -progress output", "time" },
+diff --git a/fftools/ffmpeg_sched.c b/fftools/ffmpeg_sched.c
+index ef0b6e28..6dc61923 100644
+--- a/fftools/ffmpeg_sched.c
++++ b/fftools/ffmpeg_sched.c
+@@ -444,7 +444,7 @@ static void task_init(Scheduler *sch, SchTask *task, enum SchedulerNodeType type
+ 
+ static int64_t trailing_dts(const Scheduler *sch, int count_finished)
+ {
+-    int64_t min_dts = INT64_MAX;
++    int64_t max_dts = INT64_MIN;
+ 
+     for (unsigned i = 0; i < sch->nb_mux; i++) {
+         const SchMux *mux = &sch->mux[i];
+@@ -457,11 +457,11 @@ static int64_t trailing_dts(const Scheduler *sch, int count_finished)
+             if (ms->last_dts == AV_NOPTS_VALUE)
+                 return AV_NOPTS_VALUE;
+ 
+-            min_dts = FFMIN(min_dts, ms->last_dts);
++            max_dts = FFMAX(max_dts, ms->last_dts);
+         }
+     }
+ 
+-    return min_dts == INT64_MAX ? AV_NOPTS_VALUE : min_dts;
++    return max_dts == INT64_MIN ? AV_NOPTS_VALUE : max_dts;
+ }
+ 
+ void sch_free(Scheduler **psch)
+diff --git a/libavformat/fifo.c b/libavformat/fifo.c
+index 23e4149a..259f9fe6 100644
+--- a/libavformat/fifo.c
++++ b/libavformat/fifo.c
+@@ -38,6 +38,9 @@ typedef struct FifoContext {
+     const AVClass *class;
+     AVFormatContext *avf;
+ 
++    uint64_t total_recovery_attempts;
++    int status; // 0 = running, 1 = restarting, 2 = failed
++
+     char *format;
+     AVDictionary *format_options;
+ 
+@@ -362,6 +365,8 @@ static int fifo_thread_attempt_recovery(FifoThreadContext *ctx, FifoMessage *msg
+     }
+ 
+     ctx->recovery_nr++;
++    fifo->total_recovery_attempts++;
++    fifo->status = 1;
+ 
+     if (fifo->max_recovery_attempts) {
+         av_log(avf, AV_LOG_VERBOSE, "Recovery attempt #%d/%d\n",
+@@ -379,11 +384,13 @@ static int fifo_thread_attempt_recovery(FifoThreadContext *ctx, FifoMessage *msg
+         if (is_recoverable(fifo, ret)) {
+             return fifo_thread_process_recovery_failure(ctx, pkt, ret);
+         } else {
++            fifo->status = 2; // failed
+             goto fail;
+         }
+     } else {
+         av_log(avf, AV_LOG_INFO, "Recovery successful\n");
+         ctx->recovery_nr = 0;
++        fifo->status = 0; // running
+     }
+ 
+     return 0;
+diff --git a/libavformat/tee.c b/libavformat/tee.c
+index 1a2a8ead..6fb753f0 100644
+--- a/libavformat/tee.c
++++ b/libavformat/tee.c
+@@ -49,6 +49,9 @@ typedef struct {
+      * disabled output streams are set to -1 */
+     int *stream_map;
+     int header_written;
++
++    char *id;
++    char *filename;
+ } TeeSlave;
+ 
+ typedef struct TeeContext {
+@@ -135,6 +138,8 @@ static int close_slave(TeeSlave *tee_slave)
+     }
+     av_freep(&tee_slave->stream_map);
+     av_freep(&tee_slave->bsfs);
++    av_freep(&tee_slave->id);
++    av_freep(&tee_slave->filename);
+ 
+     ff_format_io_close(avf, &avf->pb);
+     avformat_free_context(avf);
+@@ -157,8 +162,8 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
+     int ret;
+     AVDictionary *options = NULL, *bsf_options = NULL;
+     const AVDictionaryEntry *entry;
+-    char *filename;
+-    char *format = NULL, *select = NULL;
++    char *filename = NULL;
++    char *format = NULL, *select = NULL, *id = NULL;
+     AVFormatContext *avf2 = NULL;
+     int stream_count;
+     int fullret;
+@@ -185,6 +190,7 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
+     } while (0)
+ 
+     STEAL_OPTION("f", format);
++    STEAL_OPTION("id", id);
+     STEAL_OPTION("select", select);
+     PROCESS_OPTION("onfail",
+                    parse_slave_failure_policy_option(value, tee_slave),
+@@ -203,6 +209,9 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
+         av_dict_set(&options, entry->key, NULL, 0);
+     }
+ 
++    tee_slave->filename = av_strdup(filename);
++    tee_slave->id = av_strdup(id);
++
+     if (tee_slave->use_fifo) {
+ 
+         if (options) {
+@@ -233,6 +242,7 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
+                                          tee_slave->use_fifo ? "fifo" :format, filename);
+     if (ret < 0)
+         goto end;
++
+     tee_slave->avf = avf2;
+     av_dict_copy(&avf2->metadata, avf->metadata, 0);
+     avf2->opaque   = avf->opaque;
+@@ -398,6 +408,7 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
+ 
+ end:
+     av_free(format);
++    av_free(id);
+     av_free(select);
+     av_dict_free(&options);
+     av_dict_free(&bsf_options);
 
-base-commit: e1601d14100f6c7d088eba676d9555118ca94931
+base-commit: c526666f8869a5fffb04fbfeb862cde13338b001
 -- 
 2.39.5 (Apple Git-154)
 
