@@ -3,8 +3,8 @@ name: "static:ffmpeg-alpine"
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 7.1
+    branches-ignore:
+      - "**"
 
 jobs:
   build-static:
