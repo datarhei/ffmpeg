@@ -4,8 +4,8 @@ set -au
 
 function build_default_native() {
   export OS_NAME=alpine
-  export OS_VERSION=3.21
-  export FFMPEG_VERSION=7.1.1
+  export OS_VERSION=3.23
+  export FFMPEG_VERSION=8.0.1
 
   docker build \
     --progress=plain \
@@ -17,8 +17,8 @@ function build_default_native() {
 
 function build_default() {
   export OS_NAME=alpine
-  export OS_VERSION=3.21
-  export FFMPEG_VERSION=7.1.1
+  export OS_VERSION=3.23
+  export FFMPEG_VERSION=8.0.1
 
   docker buildx build \
     --load \
@@ -32,8 +32,8 @@ function build_default() {
 
 function build_rpi() {
   export OS_NAME=alpine
-  export OS_VERSION=3.21
-  export FFMPEG_VERSION=7.1.1
+  export OS_VERSION=3.23
+  export FFMPEG_VERSION=8.0.1
 
   docker build \
     --progress=plain \
@@ -43,11 +43,11 @@ function build_rpi() {
     -t datarhei/base:ffmpeg${FFMPEG_VERSION}-rpi-${OS_NAME}${OS_VERSION} .
 }
 
-function build_cuda12() {
+function build_cuda() {
   export OS_NAME=ubuntu
   export OS_VERSION=24.04
-  export FFMPEG_VERSION=7.1.1
-  export FFNVCODEC_VERSION=12.2.72.0
+  export FFMPEG_VERSION=8.0.1
+  export FFNVCODEC_VERSION=13.0.19.0
 
   docker build \
     --progress=plain \
@@ -62,7 +62,7 @@ function build_cuda12() {
 function build_vaapi() {
   export OS_NAME=ubuntu
   export OS_VERSION=24.04
-  export FFMPEG_VERSION=7.1.1
+  export FFMPEG_VERSION=8.0.1
 
   docker buildx build \
     --load \
@@ -77,7 +77,7 @@ function build_vaapi() {
 
 main() {
   if [[ $# == 0 ]]; then
-    echo "Options available: default, default_native, rpi, cuda12, vaapi"
+    echo "Options available: default, default_native, rpi, cuda, vaapi"
     exit 0
   else
     if [[ $1 == "default" ]]; then
@@ -86,8 +86,8 @@ main() {
       build_default_native
     elif [[ $1 == "rpi" ]]; then
       build_rpi
-    elif [[ $1 == "cuda12" ]]; then
-      build_cuda12
+    elif [[ $1 == "cuda" ]]; then
+      build_cuda
     elif [[ $1 == "vaapi" ]]; then
       build_vaapi
     fi

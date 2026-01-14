@@ -76,7 +76,6 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-nonfree \
   --enable-gpl \
   --enable-version3 \
-  --enable-postproc \
   --enable-static \
   --enable-openssl \
   --enable-libxml2 \

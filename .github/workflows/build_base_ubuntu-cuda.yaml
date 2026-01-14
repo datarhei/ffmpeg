@@ -12,13 +12,13 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuda: 12
+          - cuda: 13
             os: ubuntu
             os_version: "24.04"
             platforms: linux/amd64
-            cuda_version: "12.8.1"
-            ffnvcodec_version: "12.2.72.0"
-            ffmpeg_version: "7.1.1"
+            cuda_version: "13.1.1"
+            ffnvcodec_version: "13.0.19.0"
+            ffmpeg_version: "8.0.1"
     steps:
       - name: Get current date
         run: |
