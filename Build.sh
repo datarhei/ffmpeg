@@ -45,6 +45,7 @@ function build_rpi() {
 
 function build_cuda() {
   export OS_NAME=ubuntu
+  export CUDA_VERSION=13.1.0
   export OS_VERSION=24.04
   export FFMPEG_VERSION=8.0.1
   export FFNVCODEC_VERSION=13.0.19.0
@@ -55,7 +56,7 @@ function build_cuda() {
     --build-arg DEPLOY_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-ubuntu$OS_VERSION \
     --build-arg FFNVCODEC_VERSION=$FFNVCODEC_VERSION \
     --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
-    -f Dockerfile.ubuntu.cuda12 \
+    -f Dockerfile.ubuntu.cuda13 \
     -t datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-ubuntu$OS_VERSION-cuda${CUDA_VERSION} .
 }
 
