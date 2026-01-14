@@ -21,6 +21,7 @@ RUN apt-get update -y && \
   openssl \
   libssl-dev \
   cmake \
+  nasm \
   yasm \
   build-essential \
   libtool \
