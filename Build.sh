@@ -4,7 +4,7 @@ set -au
 
 function build_default_native() {
   export OS_NAME=alpine
-  export OS_VERSION=3.21
+  export OS_VERSION=3.23
   export FFMPEG_VERSION=7.1.1
 
   docker build \
@@ -17,7 +17,7 @@ function build_default_native() {
 
 function build_default() {
   export OS_NAME=alpine
-  export OS_VERSION=3.21
+  export OS_VERSION=3.23
   export FFMPEG_VERSION=7.1.1
 
   docker buildx build \
