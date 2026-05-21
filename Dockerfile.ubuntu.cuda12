@@ -39,6 +39,7 @@ RUN apt-get update -y && \
   libvorbis-dev \
   libogg-dev \
   libfreetype-dev \
+  libharfbuzz-dev \
   libsrt-openssl-dev \
   libxml2-dev \
   libfdk-aac-dev \
@@ -74,7 +75,6 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-nonfree \
   --enable-gpl \
   --enable-version3 \
-  --enable-postproc \
   --enable-static \
   --enable-openssl \
   --enable-libxml2 \
@@ -84,9 +84,9 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-nvdec \
   --enable-nvenc \
   --enable-cuvid \
-  --enable-libnpp \
   --enable-libv4l2 \
   --enable-libfreetype \
+  --enable-libharfbuzz \
   --enable-alsa \
   --enable-libsrt \
   --enable-libx264 \

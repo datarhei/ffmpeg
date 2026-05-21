@@ -5,7 +5,7 @@ set -au
 function build_default_native() {
   export OS_NAME=alpine
   export OS_VERSION=3.23
-  export FFMPEG_VERSION=7.1.1
+  export FFMPEG_VERSION=8.1.1
 
   docker build \
     --progress=plain \
@@ -18,7 +18,7 @@ function build_default_native() {
 function build_default() {
   export OS_NAME=alpine
   export OS_VERSION=3.23
-  export FFMPEG_VERSION=7.1.1
+  export FFMPEG_VERSION=8.1.1
 
   docker buildx build \
     --load \
@@ -33,7 +33,7 @@ function build_default() {
 function build_rpi() {
   export OS_NAME=alpine
   export OS_VERSION=3.21
-  export FFMPEG_VERSION=7.1.1
+  export FFMPEG_VERSION=8.1.1
 
   docker build \
     --progress=plain \
@@ -46,7 +46,7 @@ function build_rpi() {
 function build_cuda12() {
   export OS_NAME=ubuntu
   export OS_VERSION=24.04
-  export FFMPEG_VERSION=7.1.1
+  export FFMPEG_VERSION=8.1.1
   export FFNVCODEC_VERSION=12.2.72.0
 
   docker build \
@@ -62,7 +62,7 @@ function build_cuda12() {
 function build_vaapi() {
   export OS_NAME=ubuntu
   export OS_VERSION=24.04
-  export FFMPEG_VERSION=7.1.1
+  export FFMPEG_VERSION=8.1.1
 
   docker buildx build \
     --load \

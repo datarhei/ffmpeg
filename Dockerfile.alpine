@@ -71,13 +71,13 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-nonfree \
   --enable-gpl \
   --enable-version3 \
-  --enable-postproc \
   --enable-static \
   --enable-openssl \
   --enable-libxml2 \
   --enable-libv4l2 \
   --enable-v4l2_m2m \
   --enable-libfreetype \
+  --enable-libharfbuzz \
   --enable-alsa \
   --enable-libsrt \
   --enable-libx264 \

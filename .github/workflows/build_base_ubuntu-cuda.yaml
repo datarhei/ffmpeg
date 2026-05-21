@@ -18,7 +18,7 @@ jobs:
             platforms: linux/amd64
             cuda_version: "12.9.1"
             ffnvcodec_version: "12.2.72.0"
-            ffmpeg_version: "7.1.1"
+            ffmpeg_version: "8.1.1"
     steps:
       - name: Get current date
         run: |
