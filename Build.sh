@@ -5,7 +5,7 @@ set -au
 function build_default_native() {
   export OS_NAME=alpine
   export OS_VERSION=3.23
-  export FFMPEG_VERSION=8.1.1
+  export FFMPEG_VERSION=8.1.2
 
   docker build \
     --progress=plain \
@@ -18,7 +18,7 @@ function build_default_native() {
 function build_default() {
   export OS_NAME=alpine
   export OS_VERSION=3.23
-  export FFMPEG_VERSION=8.1.1
+  export FFMPEG_VERSION=8.1.2
 
   docker buildx build \
     --load \
@@ -33,7 +33,7 @@ function build_default() {
 function build_rpi() {
   export OS_NAME=alpine
   export OS_VERSION=3.21
-  export FFMPEG_VERSION=8.1.1
+  export FFMPEG_VERSION=8.1.2
 
   docker build \
     --progress=plain \
@@ -46,7 +46,7 @@ function build_rpi() {
 function build_cuda12() {
   export OS_NAME=ubuntu
   export OS_VERSION=24.04
-  export FFMPEG_VERSION=8.1.1
+  export FFMPEG_VERSION=8.1.2
   export FFNVCODEC_VERSION=12.2.72.0
 
   docker build \
@@ -59,10 +59,26 @@ function build_cuda12() {
     -t datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-ubuntu$OS_VERSION-cuda${CUDA_VERSION} .
 }
 
+function build_cuda13() {
+  export OS_NAME=ubuntu
+  export OS_VERSION=26.04
+  export FFMPEG_VERSION=8.1.2
+  export FFNVCODEC_VERSION=13.0.19.0
+
+  docker build \
+    --progress=plain \
+    --build-arg BUILD_IMAGE=nvidia/cuda:$CUDA_VERSION-devel-ubuntu$OS_VERSION \
+    --build-arg DEPLOY_IMAGE=nvidia/cuda:$CUDA_VERSION-runtime-ubuntu$OS_VERSION \
+    --build-arg FFNVCODEC_VERSION=$FFNVCODEC_VERSION \
+    --build-arg FFMPEG_VERSION=$FFMPEG_VERSION \
+    -f Dockerfile.ubuntu.cuda13 \
+    -t datarhei/base:ffmpeg${FFMPEG_VERSION}-cuda-ubuntu$OS_VERSION-cuda${CUDA_VERSION} .
+}
+
 function build_vaapi() {
   export OS_NAME=ubuntu
-  export OS_VERSION=24.04
-  export FFMPEG_VERSION=8.1.1
+  export OS_VERSION=26.04
+  export FFMPEG_VERSION=8.1.2
 
   docker buildx build \
     --load \
@@ -88,6 +104,8 @@ main() {
       build_rpi
     elif [[ $1 == "cuda12" ]]; then
       build_cuda12
+    elif [[ $1 == "cuda13" ]]; then
+      build_cuda13
     elif [[ $1 == "vaapi" ]]; then
       build_vaapi
     fi

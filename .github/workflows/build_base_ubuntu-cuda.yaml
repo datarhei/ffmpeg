@@ -19,6 +19,13 @@ jobs:
             cuda_version: "12.9.1"
             ffnvcodec_version: "12.2.72.0"
             ffmpeg_version: "8.1.2"
+          - cuda: 13
+            os: ubuntu
+            os_version: "26.04"
+            platforms: linux/amd64
+            cuda_version: "13.3.0"
+            ffnvcodec_version: "13.0.19.0"
+            ffmpeg_version: "8.1.2"
     steps:
       - name: Get current date
         run: |
