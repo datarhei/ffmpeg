@@ -62,31 +62,6 @@ RUN apt-get update -y && \
   libxcb-shape0-dev \
   zlib1g-dev
 
-# Build the newest libva
-RUN git clone https://github.com/intel/libva.git /tmp/libva && \
-  cd /tmp/libva && \
-  ./autogen.sh --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu && \
-  make -j$(nproc) && \
-  make install
-
-# Build the newest gmmlib (dependency for media-driver)
-RUN git clone https://github.com/intel/gmmlib.git /tmp/gmmlib && \
-  cd /tmp/gmmlib && \
-  mkdir build && cd build && \
-  cmake -DCMAKE_INSTALL_PREFIX=/usr \
-  -DCMAKE_INSTALL_LIBDIR=/usr/lib/x86_64-linux-gnu \
-  -DCMAKE_BUILD_TYPE=ReleaseInternal .. && \
-  make -j$(nproc) && \
-  make install
-
-# Build the newest media-driver
-RUN git clone https://github.com/intel/media-driver.git /tmp/media-driver && \
-  cd /tmp/media-driver && \
-  mkdir build_media && cd build_media && \
-  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=/usr/lib/x86_64-linux-gnu -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ../ && \
-  make -j$(nproc) && \
-  make install
-
 # install and patch ffmpeg
 RUN mkdir -p /dist && cd /dist && \
   curl -OLk http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
@@ -107,6 +82,7 @@ RUN cd /dist/ffmpeg-${FFMPEG_VERSION} && \
   --enable-static \
   --enable-openssl \
   --enable-libxml2 \
+  --enable-libdrm \
   --enable-vaapi \
   --enable-libv4l2 \
   --enable-libfreetype \
@@ -153,7 +129,6 @@ RUN echo "/ffmpeglibs" > /etc/ld.so.conf.d/ffmpeg.conf && \
   tzdata \
   v4l-utils \
   fbset \
-  x265 \
   libssl3 \
   zlib1g \
   i965-va-driver-shaders \
