@@ -1,17 +1,17 @@
-From 6582888eb1cfdefdafe9ed680a77af5368702ba1 Mon Sep 17 00:00:00 2001
+From 4846ad35916a4567a65c873a40e017f8b8e28586 Mon Sep 17 00:00:00 2001
 From: Ingo Oppermann <ingo@datarhei.com>
-Date: Thu, 21 May 2026 14:14:11 +0200
-Subject: [PATCH v1] progress (8.1.1)
+Date: Thu, 17 Sep 2026 12:56:58 +0200
+Subject: [PATCH v4] progress (8.1.1)
 
 ---
  README.PROGRESS.md      | 759 +++++++++++++++++++++++++++++++++++
  fftools/Makefile        |   1 +
- fftools/ffmpeg.c        |  35 +-
+ fftools/ffmpeg.c        |  33 +-
  fftools/ffmpeg.h        |   1 +
- fftools/ffmpeg_demux.c  | 165 +++-----
+ fftools/ffmpeg_demux.c  | 165 ++------
  fftools/ffmpeg_demux.h  | 180 +++++++++
- fftools/ffmpeg_filter.c |   9 +-
- fftools/ffmpeg_json.c   | 857 ++++++++++++++++++++++++++++++++++++++++
+ fftools/ffmpeg_filter.c |  20 +-
+ fftools/ffmpeg_json.c   | 861 ++++++++++++++++++++++++++++++++++++++++
  fftools/ffmpeg_json.h   |  16 +
  fftools/ffmpeg_mux.c    |  45 ++-
  fftools/ffmpeg_mux.h    |  13 +
@@ -19,11 +19,13 @@ Subject: [PATCH v1] progress (8.1.1)
  fftools/ffmpeg_sched.c  |   6 +-
  libavformat/fifo.c      |   7 +
  libavformat/tee.c       |  15 +-
- 15 files changed, 1985 insertions(+), 130 deletions(-)
+ test.sh                 | 190 +++++++++
+ 16 files changed, 2188 insertions(+), 130 deletions(-)
  create mode 100644 README.PROGRESS.md
  create mode 100644 fftools/ffmpeg_demux.h
  create mode 100644 fftools/ffmpeg_json.c
  create mode 100644 fftools/ffmpeg_json.h
+ create mode 100755 test.sh
 
 diff --git a/README.PROGRESS.md b/README.PROGRESS.md
 new file mode 100644
@@ -803,7 +805,7 @@ index 01b16fa8..a43b0943 100644
      fftools/sync_queue.o        \
      fftools/thread_queue.o      \
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
-index b394243f..7e7aa1fa 100644
+index b394243f..ee7b9478 100644
 --- a/fftools/ffmpeg.c
 +++ b/fftools/ffmpeg.c
 @@ -82,8 +82,11 @@
@@ -855,13 +857,12 @@ index b394243f..7e7aa1fa 100644
      int64_t timer_start, transcode_ts = 0;
  
      print_stream_maps();
-@@ -914,6 +929,14 @@ static int transcode(Scheduler *sch)
+@@ -914,6 +929,13 @@ static int transcode(Scheduler *sch)
              if (check_keyboard_interaction(cur_time) < 0)
                  break;
  
 +        // Dump outputs and stream maps before any report
 +        if (once == 0 && atomic_load(&nb_output_dumped) >= nb_output_files) {
-+            print_json_stream_maps();
 +            print_json_outputs();
 +
 +            once = 1;
@@ -870,20 +871,19 @@ index b394243f..7e7aa1fa 100644
          /* dump report by using the output first video and audio streams */
          print_report(0, timer_start, cur_time, transcode_ts);
      }
-@@ -926,6 +949,12 @@ static int transcode(Scheduler *sch)
+@@ -926,6 +948,11 @@ static int transcode(Scheduler *sch)
          ret = err_merge(ret, err);
      }
  
 +    // Dump outputs and stream maps before any report
 +    if (once == 0 && atomic_load(&nb_output_dumped) >= nb_output_files) {
-+        print_json_stream_maps();
 +        print_json_outputs();
 +    }
 +
      term_exit();
  
      /* dump report by using the first video and audio streams */
-@@ -1010,6 +1039,8 @@ int main(int argc, char **argv)
+@@ -1010,6 +1037,8 @@ int main(int argc, char **argv)
      if (ret < 0)
          goto finish;
  
@@ -1282,7 +1282,7 @@ index 00000000..34f1dd76
 +#endif /* FFTOOLS_FFMPEG_DEMUX_H */
 \ No newline at end of file
 diff --git a/fftools/ffmpeg_filter.c b/fftools/ffmpeg_filter.c
-index 765b65d0..28e5517f 100644
+index 765b65d0..be09012e 100644
 --- a/fftools/ffmpeg_filter.c
 +++ b/fftools/ffmpeg_filter.c
 @@ -21,6 +21,7 @@
@@ -1302,10 +1302,11 @@ index 765b65d0..28e5517f 100644
      // name used for logging
      char             log_name[32];
  
-@@ -2228,6 +2231,10 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
+@@ -2228,6 +2231,11 @@ static int configure_filtergraph(FilterGraph *fg, FilterGraphThread *fgt)
              goto fail;
      }
  
++    // Store a pointer to the graph to the FilterGraphPriv
 +    if (fgt->graph != NULL) {
 +        fgp->graph = fgt->graph;
 +    }
@@ -1313,21 +1314,45 @@ index 765b65d0..28e5517f 100644
      return 0;
  fail:
      cleanup_filtergraph(fg, fgt);
-@@ -3261,7 +3268,7 @@ static void fg_thread_uninit(FilterGraphThread *fgt)
-     av_freep(&fgt->eof_in);
-     av_freep(&fgt->eof_out);
+@@ -3299,7 +3307,7 @@ static int filter_thread(void *arg)
+     FilterGraph      *fg = &fgp->fg;
  
--    avfilter_graph_free(&fgt->graph);
-+    //avfilter_graph_free(&fgt->graph);
+     FilterGraphThread fgt;
+-    int ret = 0, input_status = 0;
++    int ret = 0, input_status = 0, once = 0;
  
-     memset(fgt, 0, sizeof(*fgt));
- }
+     ret = fg_thread_init(&fgt, fg);
+     if (ret < 0)
+@@ -3396,6 +3404,12 @@ read_frames:
+             if (av_buffersrc_get_status(ifp->ifilter.filter))
+                 close_input(ifp);
+         }
++
++        if (once == 0 && atomic_load(&nb_output_dumped) >= nb_output_files) {
++            print_json_stream_maps();
++
++            once = 1;
++        }
+     }
+ 
+     for (unsigned i = 0; i < fg->nb_outputs; i++) {
+@@ -3414,6 +3428,10 @@ finish:
+     if (print_graphs || print_graphs_file)
+         print_filtergraph(fg, fgt.graph);
+ 
++    if (once == 0) {
++        print_json_stream_maps();
++    }
++
+     // EOF is normal termination
+     if (ret == AVERROR_EOF)
+         ret = 0;
 diff --git a/fftools/ffmpeg_json.c b/fftools/ffmpeg_json.c
 new file mode 100644
-index 00000000..e101560f
+index 00000000..b35ead52
 --- /dev/null
 +++ b/fftools/ffmpeg_json.c
-@@ -0,0 +1,857 @@
+@@ -0,0 +1,861 @@
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -2044,6 +2069,10 @@ index 00000000..e101560f
 +            InputFilter *f = ist->filters[i];
 +            const FilterGraphPriv *fgp = cfgp_from_cfg(f->graph);
 +
++            if(fgp->graph == NULL) {
++                continue;
++            }
++
 +            if(fgp->graph->nb_filters == 0) {
 +                continue;
 +            }
@@ -2467,8 +2496,205 @@ index 8980b422..0b62187f 100644
      av_free(select);
      av_dict_free(&options);
      av_dict_free(&bsf_options);
+diff --git a/test.sh b/test.sh
+new file mode 100755
+index 00000000..ea5b1c16
+--- /dev/null
++++ b/test.sh
+@@ -0,0 +1,190 @@
++#!/bin/sh
++
++RED="\033[1;31m"
++GREEN="\033[1;32m"
++NOCOLOR="\033[0m"
++
++if [ $# -ne 2 ]; then
++    echo "${RED}missing parameter: ${0} ffmpeg_left ffmpeg_right${NOCOLOR}"
++    exit 1
++fi
++
++left=$1
++right=$2
++
++if [ ! -x $left -o -d $left ]; then
++    echo "${RED}ffmpeg_left is not executable or is not a file${NOCOLOR}"
++    exit 1
++fi
++
++if [ ! -x $right -o -d $right ]; then
++    echo "${RED}ffmpeg_right is not executable or is not a file${NOCOLOR}"
++    exit 1
++fi
++
++# Generate sample files
++ffmpeg -hide_banner -loglevel quiet -y -f lavfi -i testsrc2=rate=25:size=640x360 -map 0:0 -codec:v libx264 -preset:v ultrafast -r 25 -pix_fmt yuv420p -g 50 -f mp4 -t 10 example_noaudio.mp4
++ffmpeg -hide_banner -loglevel quiet -y -f lavfi -i testsrc2=rate=25:size=640x360 -f lavfi -i anullsrc=r=44100:cl=stereo -map 0:0 -map 1:0 -codec:v libx264 -preset:v ultrafast -r 25 -pix_fmt yuv420p -g 50 -codec:a aac -f mp4 -t 10 example_audio.mp4
++ffmpeg -hide_banner -loglevel quiet -y -f lavfi -i testsrc2=rate=25:size=640x360 -map 0:0 -vframes 1 -f image2 -update 1 example.jpg
++
++test=1
++
++# Tests
++echo "Test ${test}: \c"
++${left} -i example_noaudio.mp4 2>&1 | grep -E '^ffmpeg.inputs:' | sed -e 's/^ffmpeg.inputs://g' > left.json
++${right} -i example_noaudio.mp4 2>&1 | grep -E '^ffmpeg.inputs:' | sed -e 's/^ffmpeg.inputs://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 2>&1 | grep -E '^ffmpeg.inputs:' | sed -e 's/^ffmpeg.inputs://g' > left.json
++${right} -i example_audio.mp4 2>&1 | grep -E '^ffmpeg.inputs:' | sed -e 's/^ffmpeg.inputs://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -f null - 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > left.json
++${right} -i example_audio.mp4 -f null - 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -codec copy -f null - 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > left.json
++${right} -i example_audio.mp4 -codec copy -f null - 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null - 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > left.json
++${right} -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null - 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} ffmpeg -i example_audio.mp4 -i example.jpg -filter_complex "[0:v]split=2[main][in1];[main]split=2[in2][in3];[in1]boxblur[blur],[blur][1:v]overlay[out1];[in2]negate[out2];[in3]yadif[out3];[out2]split=2[out20][out21]" -map "[out1]" -map "[out3]" -map "[out20]" -map "[out21]" -map 0:a -af "dcshift" -f matroska -y /dev/null 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > left.json
++${right} ffmpeg -i example_audio.mp4 -i example.jpg -filter_complex "[0:v]split=2[main][in1];[main]split=2[in2][in3];[in1]boxblur[blur],[blur][1:v]overlay[out1];[in2]negate[out2];[in3]yadif[out3];[out2]split=2[out20][out21]" -map "[out1]" -map "[out3]" -map "[out20]" -map "[out21]" -map 0:a -af "dcshift" -f matroska -y /dev/null 2>&1 | grep -E '^ffmpeg.mapping:' | sed -e 's/^ffmpeg.mapping://g' | sed -E -e 's/"src_id":"[^"]+"/"src_id":"0"/g' | sed -E -e 's/"dst_id":"[^"]+"/"dst_id":"0"/g' | sed -E -e 's/"id":"[^"]+"/"id":"0"/g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -f null - 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > left.json
++${right} -i example_audio.mp4 -f null - 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -codec copy -f null - 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > left.json
++${right} -i example_audio.mp4 -codec copy -f null - 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null - 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > left.json
++${right} -i example_audio.mp4 -codec:v mpeg4 -codec:a copy -f null - 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} ffmpeg -i example_audio.mp4 -i example.jpg -filter_complex "[0:v]split=2[main][in1];[main]split=2[in2][in3];[in1]boxblur[blur],[blur][1:v]overlay[out1];[in2]negate[out2];[in3]yadif[out3];[out2]split=2[out20][out21]" -map "[out1]" -map "[out3]" -map "[out20]" -map "[out21]" -map 0:a -af "dcshift" -f matroska -y /dev/null 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > left.json
++${right} ffmpeg -i example_audio.mp4 -i example.jpg -filter_complex "[0:v]split=2[main][in1];[main]split=2[in2][in3];[in1]boxblur[blur],[blur][1:v]overlay[out1];[in2]negate[out2];[in3]yadif[out3];[out2]split=2[out20][out21]" -map "[out1]" -map "[out3]" -map "[out20]" -map "[out21]" -map 0:a -af "dcshift" -f matroska -y /dev/null 2>&1 | grep -E '^ffmpeg.outputs:' | sed -e 's/^ffmpeg.outputs://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++echo "Test ${test}: \c"
++${left} -i example_audio.mp4 -f null - 2>&1 | grep -E '^ffmpeg.progress:' | sed -e 's/^ffmpeg.progress://g' > left.json
++${right} -i example_audio.mp4 -f null - 2>&1 | grep -E '^ffmpeg.progress:' | sed -e 's/^ffmpeg.progress://g' > right.json
++
++jd left.json right.json
++
++if [ $? -ne 0 ]; then
++    echo "${RED}failed${NOCOLOR}"
++else
++    echo "${GREEN}OK${NOCOLOR}"
++fi
++
++test=$((test + 1))
++
++# Cleanup
++
++rm left.json right.json
++rm example_noaudio.mp4 example_audio.mp4 example.jpg
+\ No newline at end of file
 
 base-commit: bc80614c323b2b6d0ca134efb5f945b44f7871b6
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 
